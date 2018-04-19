@@ -30,6 +30,9 @@
 #ifndef __PMEM_H
 #define __PMEM_H
 
+#include "server.h"
+#include "sds.h"
+
 #ifdef USE_PMDK
 typedef struct key_val_pair_PM {
     PMEMoid key_oid;
@@ -42,6 +45,25 @@ int pmemReconstruct(void);
 void pmemKVpairSet(void *key, void *val);
 PMEMoid pmemAddToPmemList(void *key, void *val);
 void pmemRemoveFromPmemList(PMEMoid kv_PM_oid);
+#ifdef TODIS
+int pmemReconstructTODIS(void);
+void pmemKVpairSetRearrangeList(void *key, void *val);
+PMEMoid pmemUnlinkFromPmemList(PMEMoid oid);
+int getBestEvictionKeysPMEMoid(PMEMoid *victim_oids);
+PMEMoid getBestEvictionKeyPMEMoid(void);
+sds getBestEvictionKeyPM(void);
+struct key_val_pair_PM *getPMObjectFromOid(PMEMoid oid);
+sds getKeyFromPMObject(struct key_val_pair_PM *obj);
+sds getValFromPMObject(struct key_val_pair_PM *obj);
+sds getKeyFromOid(PMEMoid oid);
+sds getValFromOid(PMEMoid oid);
+int evictPmemNodesToVictimList(PMEMoid *victim_oids);
+int evictPmemNodeToVictimList(PMEMoid victim_oid);
+void freeVictimList(PMEMoid start_oid);
+size_t pmem_used_memory(void);
+size_t sizeOfPmemNode(PMEMoid oid);
+struct redis_pmem_root *getPmemRootObject(void);
+#endif
 #endif
 
 #endif
