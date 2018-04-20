@@ -314,7 +314,13 @@ void serverLogRaw(int level, const char *msg) {
     int log_to_stdout = server.logfile[0] == '\0';
 
     level &= 0xff; /* clear flags */
+#ifdef USE_PB
+    if (
+        (server.verbosity_pb_only && level != LL_PB) ||
+        (!server.verbosity_pb_only && level < server.verbosity)) return;
+#else
     if (level < server.verbosity) return;
+#endif
 
     fp = log_to_stdout ? stdout : fopen(server.logfile,"a");
     if (!fp) return;
@@ -353,7 +359,13 @@ void serverLog(int level, const char *fmt, ...) {
     va_list ap;
     char msg[LOG_MAX_LEN];
 
+#ifdef USE_PB
+    if (
+        (server.verbosity_pb_only && (level&0xff) != LL_PB) ||
+        (!server.verbosity_pb_only && (level&0xff) < server.verbosity)) return;
+#else
     if ((level&0xff) < server.verbosity) return;
+#endif
 
     va_start(ap, fmt);
     vsnprintf(msg, sizeof(msg), fmt, ap);
@@ -1528,6 +1540,9 @@ void initServerConfig(void) {
     server.pm_file_size = CONFIG_DEFAULT_PM_FILE_SIZE;
     server.pm_reconstruct_required = false;
 #endif
+#ifdef USE_PB
+    server.verbosity_pb_only = CONFIG_DEFAULT_VERBOSITY_PB_ONLY;
+#endif
     server.supervised = 0;
     server.supervised_mode = SUPERVISED_NONE;
     server.aof_state = AOF_OFF;
@@ -1915,6 +1930,8 @@ void initServer(void) {
     signal(SIGHUP, SIG_IGN);
     signal(SIGPIPE, SIG_IGN);
     setupSignalHandlers();
+
+    serverLog(LL_PB, "PB: Server start");
 
     if (server.syslog_enabled) {
         openlog(server.syslog_ident, LOG_PID | LOG_NDELAY | LOG_NOWAIT,

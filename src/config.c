@@ -71,6 +71,9 @@ configEnum loglevel_enum[] = {
     {"verbose", LL_VERBOSE},
     {"notice", LL_NOTICE},
     {"warning", LL_WARNING},
+#ifdef USE_PB
+    {"pb", LL_PB},
+#endif
     {NULL,0}
 };
 
@@ -251,6 +254,12 @@ void loadServerConfigFromString(char *config) {
                       "Must be one of debug, verbose, notice, warning";
                 goto loaderr;
             }
+#ifdef USE_PB
+        } else if (!strcasecmp(argv[0], "verbosity-pb-only") && argc == 2) {
+            if ((server.verbosity_pb_only = yesnotoi(argv[1])) == -1) {
+                err = "argument must be 'yes' or 'no'"; goto loaderr;
+            }
+#endif
         } else if (!strcasecmp(argv[0],"logfile") && argc == 2) {
             FILE *logfp;
 
@@ -889,6 +898,10 @@ void configSetCommand(client *c) {
 
     /* Boolean fields.
      * config_set_bool_field(name,var). */
+#ifdef USE_PB
+    } config_set_bool_field(
+      "verbosity-pb-only", server.verbosity_pb_only) {
+#endif
     } config_set_bool_field(
       "rdbcompression", server.rdb_compression) {
     } config_set_bool_field(
@@ -1133,6 +1146,10 @@ void configGetCommand(client *c) {
     config_get_numerical_field("tcp-keepalive",server.tcpkeepalive);
 
     /* Bool (yes/no) values */
+#ifdef USE_PB
+    config_get_bool_field("verbosity-pb-only",
+            server.verbosity_pb_only);
+#endif
     config_get_bool_field("cluster-require-full-coverage",
             server.cluster_require_full_coverage);
     config_get_bool_field("no-appendfsync-on-rewrite",
@@ -1804,6 +1821,9 @@ int rewriteConfig(char *path) {
     rewriteConfigNumericalOption(state,"tcp-keepalive",server.tcpkeepalive,CONFIG_DEFAULT_TCP_KEEPALIVE);
     rewriteConfigNumericalOption(state,"slave-announce-port",server.slave_announce_port,CONFIG_DEFAULT_SLAVE_ANNOUNCE_PORT);
     rewriteConfigEnumOption(state,"loglevel",server.verbosity,loglevel_enum,CONFIG_DEFAULT_VERBOSITY);
+#ifdef USE_PB
+    rewriteConfigYesNoOption(state, "verbosity-pb-only", server.verbosity_pb_only, CONFIG_DEFAULT_VERBOSITY_PB_ONLY);
+#endif
     rewriteConfigStringOption(state,"logfile",server.logfile,CONFIG_DEFAULT_LOGFILE);
     rewriteConfigYesNoOption(state,"syslog-enabled",server.syslog_enabled,CONFIG_DEFAULT_SYSLOG_ENABLED);
     rewriteConfigStringOption(state,"syslog-ident",server.syslog_ident,CONFIG_DEFAULT_SYSLOG_IDENT);

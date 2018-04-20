@@ -780,10 +780,17 @@ int luaLogCommand(lua_State *lua) {
         return lua_error(lua);
     }
     level = lua_tonumber(lua,-argc);
+#ifdef USE_PB
+    if (level < LL_PB || level > LL_PB) {
+        lua_pushstring(lua, "Invalid debug level.");
+        return lua_error(lua);
+    }
+#else
     if (level < LL_DEBUG || level > LL_WARNING) {
         lua_pushstring(lua, "Invalid debug level.");
         return lua_error(lua);
     }
+#endif
 
     /* Glue together all the arguments */
     log = sdsempty();
@@ -929,6 +936,12 @@ void scriptingInit(int setup) {
     lua_pushstring(lua,"log");
     lua_pushcfunction(lua,luaLogCommand);
     lua_settable(lua,-3);
+
+#ifdef USE_PB
+    lua_pushstring(lua,"LOG_PB");
+    lua_pushnumber(lua,LL_PB);
+    lua_settable(lua,-3);
+#endif
 
     lua_pushstring(lua,"LOG_DEBUG");
     lua_pushnumber(lua,LL_DEBUG);

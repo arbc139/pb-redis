@@ -377,12 +377,23 @@ typedef long long mstime_t; /* millisecond time type. */
 #define SORT_OP_GET 0
 
 /* Log levels */
+#ifdef USE_PB
+#define LL_PB 0
+#define LL_DEBUG 1
+#define LL_VERBOSE 2
+#define LL_NOTICE 3
+#define LL_WARNING 4
+#else
 #define LL_DEBUG 0
 #define LL_VERBOSE 1
 #define LL_NOTICE 2
 #define LL_WARNING 3
+#endif
 #define LL_RAW (1<<10) /* Modifier to log without timestamp */
 #define CONFIG_DEFAULT_VERBOSITY LL_NOTICE
+#ifdef USE_PB
+#define CONFIG_DEFAULT_VERBOSITY_PB_ONLY 0
+#endif
 
 /* Supervision options */
 #define SUPERVISED_NONE 0
@@ -842,6 +853,9 @@ struct redisServer {
     PMEMobjpool *pm_pool;           /* PMEM pool handle */
     TOID(struct redis_pmem_root) pm_rootoid; /*PMEM root object OID*/
     uint64_t pool_uuid_lo;          /* PMEM pool UUID */
+#endif
+#ifdef USE_PB
+    int verbosity_pb_only;          /* Force to write LL_PB log only. */
 #endif
     /* AOF persistence */
     int aof_state;                  /* AOF_(ON|OFF|WAIT_REWRITE) */

@@ -155,4 +155,22 @@ pmemRemoveFromPmemList(PMEMoid kv_PM_oid)
         return;
     }
 }
+
+#ifdef USE_PB
+int pmemReconstructPB(void) {
+    // TODO(totoro): Implement Reconstruct logics.
+    return -1;
+}
+
+PMEMoid pmemAddToPBList(void *cmd) {
+    // TODO(totoro): Implement Add persistent_aof_log logics.
+    return OID_NULL;
+}
+
+void pmemClearPBList() {
+    // TODO(totoro): Implement clear logics.
+}
 #endif
+
+#endif
+
