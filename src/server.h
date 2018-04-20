@@ -1362,6 +1362,9 @@ void feedAppendOnlyFile(struct redisCommand *cmd, int dictid, robj **argv, int a
 void aofRemoveTempFile(pid_t childpid);
 int rewriteAppendOnlyFileBackground(void);
 int loadAppendOnlyFile(char *filename);
+#ifdef USE_PB
+int loadAppendOnlyPersistentBuffer();
+#endif
 void stopAppendOnly(void);
 int startAppendOnly(void);
 void backgroundRewriteDoneHandler(int exitcode, int bysignal);

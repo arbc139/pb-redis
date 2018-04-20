@@ -34,7 +34,9 @@
 #include "util.h"
 
 int pmemReconstructPB(void) {
-    // TODO(totoro): Implement Reconstruct logics.
+    loadAppendOnlyPersistentBuffer();
+    pmemClearPBList(getCurrentHead());
+    pmemClearPBList(getAnotherHead());
     return C_OK;
 }
 

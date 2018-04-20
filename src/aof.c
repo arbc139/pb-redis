@@ -778,6 +778,16 @@ fmterr: /* Format error. */
     exit(1);
 }
 
+#ifdef USE_PB
+/* Reply the append log persistent buffer. */
+/* Replay the append log file. On success C_OK is returned. On non fatal
+ * error (the append only file is zero-length) C_ERR is returned. On
+ * fatal error an error message is logged and the program exists. */
+int loadAppendOnlyPersistentBuffer() {
+    // Need to implement.
+}
+#endif
+
 /* ----------------------------------------------------------------------------
  * AOF rewrite
  * ------------------------------------------------------------------------- */
