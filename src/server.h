@@ -58,6 +58,9 @@
 POBJ_LAYOUT_BEGIN(store_db);
 POBJ_LAYOUT_TOID(store_db, struct redis_pmem_root);
 POBJ_LAYOUT_TOID(store_db, struct key_val_pair_PM);
+#ifdef USE_PB
+POBJ_LAYOUT_TOID(store_db, struct persistent_aof_log);
+#endif
 POBJ_LAYOUT_END(store_db);
 
 #include "pmem.h"
@@ -66,6 +69,9 @@ uint64_t pm_type_root_type_id;
 uint64_t pm_type_key_val_pair_PM;
 uint64_t pm_type_sds_type_id;
 uint64_t pm_type_emb_sds_type_id;
+#ifdef USE_PB
+uint64_t pm_type_persistent_aof_log;
+#endif
 
 /* Type key_val_pair_PM Object */
 #define PM_TYPE_KEY_VAL_PAIR_PM pm_type_key_val_pair_PM
@@ -73,11 +79,24 @@ uint64_t pm_type_emb_sds_type_id;
 #define PM_TYPE_SDS pm_type_sds_type_id
 /* Type Embedded SDS Object */
 #define PM_TYPE_EMB_SDS pm_type_emb_sds_type_id
+#ifdef USE_PB
+#define PM_TYPE_PERSISTENT_AOF_LOG pm_type_persistent_aof_log
+#endif
 
+#ifdef USE_PB
+struct redis_pmem_root {
+	uint64_t num_logs;
+    // Using double buffer method.
+    unsigned current_head:1;
+	TOID(struct persistent_aof_log) first_head;
+    TOID(struct persistent_aof_log) second_head;
+};
+#else
 struct redis_pmem_root {
 	uint64_t num_dict_entries;
 	TOID(struct key_val_pair_PM) pe_first;
 };
+#endif
 
 #endif
 
@@ -1721,6 +1740,13 @@ void pfmergeCommand(client *c);
 void pfdebugCommand(client *c);
 void latencyCommand(client *c);
 void securityWarningCommand(client *c);
+#ifdef USE_PB
+void getDramStatusCommand(client *c);
+void getPBListStatusCommand(client *c);
+void addPBListCommand(client *c);
+void switchPBListCommand(client *c);
+void clearCurrentPBListCommand(client *c);
+#endif
 
 #if defined(__GNUC__)
 void *calloc(size_t count, size_t size) __attribute__ ((deprecated));

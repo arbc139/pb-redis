@@ -296,8 +296,18 @@ struct redisCommand redisCommandTable[] = {
     {"pfdebug",pfdebugCommand,-3,"w",0,NULL,0,0,0,0,0},
     {"post",securityWarningCommand,-1,"lt",0,NULL,0,0,0,0,0},
     {"host:",securityWarningCommand,-1,"lt",0,NULL,0,0,0,0,0},
+#ifdef USE_PB
+    {"dramstatus",getDramStatusCommand,1,"r",0,NULL,0,0,0,0,0},
+    {"getpblist",getPBListStatusCommand,1,"r",0,NULL,0,0,0,0,0},
+    {"addpblist",addPBListCommand,-2,"wm",0,NULL,1,1,1,0,0},
+    {"switchpblist",switchPBListCommand,1,"r",0,NULL,0,0,0,0,0},
+    {"clearcurrentpblist",clearCurrentPBListCommand,1,"r",0,NULL,0,0,0,0,0},
+#endif
     {"latency",latencyCommand,-2,"aslt",0,NULL,0,0,0,0,0}
 };
+void getDramStatusCommand(client *c);
+void getPBListStatusCommand(client *c);
+void addPBListCommand(client *c);
 
 struct evictionPoolEntry *evictionPoolAlloc(void);
 
@@ -478,45 +488,12 @@ void dictObjectDestructor(void *privdata, void *val)
     decrRefCount(val);
 }
 
-#ifdef USE_PMDK
-void dictObjectDestructorPM(void *privdata, void *val)
-{
-    DICT_NOTUSED(privdata);
-
-    if (val == NULL)
-        return; /* Lazy freeing will set value to NULL. */
-
-    TX_BEGIN(server.pm_pool) {
-        decrRefCountPM(val);
-    } TX_ONABORT {
-        serverLog(LL_WARNING,"ERROR: decrementing the PM ref count failed (%s)", __func__);
-    } TX_END
-}
-#endif
-
 void dictSdsDestructor(void *privdata, void *val)
 {
     DICT_NOTUSED(privdata);
 
     sdsfree(val);
 }
-
-#ifdef USE_PMDK
-void dictSdsDestructorPM(void *privdata, void *val)
-{
-    PMEMoid *kv_PM_oid;
-
-    DICT_NOTUSED(privdata);
-
-    TX_BEGIN(server.pm_pool) {
-        kv_PM_oid = sdsPMEMoidBackReference(val);
-        sdsfreePM(val);
-        pmemRemoveFromPmemList(*kv_PM_oid);
-    } TX_ONABORT {
-        serverLog(LL_WARNING,"ERROR: removing an element from PM failed (%s)", __func__);
-    } TX_END
-}
-#endif
 
 int dictObjKeyCompare(void *privdata, const void *key1,
         const void *key2)
@@ -608,18 +585,6 @@ dictType dbDictType = {
     dictSdsDestructor,          /* key destructor */
     dictObjectDestructor   /* val destructor */
 };
-
-#ifdef USE_PMDK
-/* Db->dict, keys are sds strings, vals are Redis objects. */
-dictType dbDictTypePM = {
-    dictSdsHash,                /* hash function */
-    NULL,                       /* key dup */
-    NULL,                       /* val dup */
-    dictSdsKeyCompare,          /* key compare */
-    dictSdsDestructorPM,          /* key destructor */
-    dictObjectDestructorPM   /* val destructor */
-};
-#endif
 
 /* server.lua_scripts sha (as sds string) -> scripts (as robj) cache. */
 dictType shaScriptObjectDictType = {
@@ -1984,12 +1949,22 @@ void initServer(void) {
     /* Create the Redis databases, and initialize other internal state. */
     for (j = 0; j < server.dbnum; j++) {
 #ifdef USE_PMDK
+#ifdef USE_PB
+        if (server.persistent) {
+            // Uses Normal dict in PB mode.
+            server.db[j].dict = dictCreate(&dbDictType,NULL);
+            
+            pm_type_root_type_id = TOID_TYPE_NUM(struct redis_pmem_root);
+            pm_type_persistent_aof_log = TOID_TYPE_NUM(struct persistent_aof_log);
+        } else
+#else
         if (server.persistent) {
             server.db[j].dict = dictCreate(&dbDictTypePM,NULL);
             
             pm_type_root_type_id = TOID_TYPE_NUM(struct redis_pmem_root);
             pm_type_key_val_pair_PM = TOID_TYPE_NUM(struct key_val_pair_PM);
         } else
+#endif
 #endif
             server.db[j].dict = dictCreate(&dbDictType,NULL);
         server.db[j].expires = dictCreate(&keyptrDictType,NULL);
@@ -4043,7 +4018,7 @@ void initPersistentMemory(void) {
     } else {
         server.pm_rootoid = POBJ_ROOT(server.pm_pool, struct redis_pmem_root);
         root = pmemobj_direct(server.pm_rootoid.oid);
-        root->num_dict_entries = 0;
+        root->num_logs = 0;
     }
 
     /* Get pool UUID from root object's OID. */
@@ -4218,7 +4193,7 @@ int main(int argc, char **argv) {
 #ifdef USE_PMDK
         if (server.pm_reconstruct_required) {
             long long start = ustime();
-            if (pmemReconstruct() == C_OK) {
+            if (pmemReconstructPB() == C_OK) {
                 serverLog(LL_NOTICE,"DB loaded from PMEM: %.3f seconds",(float)(ustime()-start)/1000000);
             } else if (errno != ENOENT) {
                 serverLog(LL_WARNING,"Fatal error loading the DB from PMEM: %s. Exiting.",strerror(errno));

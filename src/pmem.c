@@ -27,150 +27,92 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifdef USE_PMDK
+#ifdef USE_PB
 #include "server.h"
 #include "obj.h"
 #include "libpmemobj.h"
 #include "util.h"
 
-int
-pmemReconstruct(void)
-{
-    TOID(struct redis_pmem_root) root;
-    TOID(struct key_val_pair_PM) kv_PM_oid;
-    struct key_val_pair_PM *kv_PM;
-    dict *d;
-    void *key;
-    void *val;
-    void *pmem_base_addr;
-
-    root = server.pm_rootoid;
-    pmem_base_addr = (void *)server.pm_pool->addr;
-    d = server.db[0].dict;
-    dictExpand(d, D_RO(root)->num_dict_entries);
-    for (kv_PM_oid = D_RO(root)->pe_first; TOID_IS_NULL(kv_PM_oid) == 0; kv_PM_oid = D_RO(kv_PM_oid)->pmem_list_next){
-		kv_PM = (key_val_pair_PM *)(kv_PM_oid.oid.off + (uint64_t)pmem_base_addr);
-		key = (void *)(kv_PM->key_oid.off + (uint64_t)pmem_base_addr);
-		val = (void *)(kv_PM->val_oid.off + (uint64_t)pmem_base_addr);
-
-        (void)dictAddReconstructedPM(d, key, val);
-    }
+int pmemReconstructPB(void) {
+    // TODO(totoro): Implement Reconstruct logics.
     return C_OK;
 }
 
-void pmemKVpairSet(void *key, void *val)
-{
-    PMEMoid *kv_PM_oid;
-    PMEMoid val_oid;
-    struct key_val_pair_PM *kv_PM_p;
-
-    kv_PM_oid = sdsPMEMoidBackReference((sds)key);
-    kv_PM_p = (struct key_val_pair_PM *)pmemobj_direct(*kv_PM_oid);
-
-    val_oid.pool_uuid_lo = server.pool_uuid_lo;
-    val_oid.off = (uint64_t)val - (uint64_t)server.pm_pool->addr;
-
-    TX_ADD_FIELD_DIRECT(kv_PM_p, val_oid);
-    kv_PM_p->val_oid = val_oid;
-    return;
+PMEMoid getCurrentHead() {
+    struct redis_pmem_root *root = pmemobj_direct(server.pm_rootoid.oid);
+    if (root->current_head == 0) return root->first_head.oid;
+    return root->second_head.oid;
 }
 
-PMEMoid
-pmemAddToPmemList(void *key, void *val)
-{
-    PMEMoid key_oid;
-    PMEMoid val_oid;
-    PMEMoid kv_PM;
-    struct key_val_pair_PM *kv_PM_p;
-    TOID(struct key_val_pair_PM) typed_kv_PM;
-    struct redis_pmem_root *root;
-
-    key_oid.pool_uuid_lo = server.pool_uuid_lo;
-    key_oid.off = (uint64_t)key - (uint64_t)server.pm_pool->addr;
-
-    val_oid.pool_uuid_lo = server.pool_uuid_lo;
-    val_oid.off = (uint64_t)val - (uint64_t)server.pm_pool->addr;
-
-    kv_PM = pmemobj_tx_zalloc(sizeof(struct key_val_pair_PM), pm_type_key_val_pair_PM);
-    kv_PM_p = (struct key_val_pair_PM *)pmemobj_direct(kv_PM);
-    kv_PM_p->key_oid = key_oid;
-    kv_PM_p->val_oid = val_oid;
-    typed_kv_PM.oid = kv_PM;
-
-    root = pmemobj_direct(server.pm_rootoid.oid);
-
-    kv_PM_p->pmem_list_next = root->pe_first;
-    if(!TOID_IS_NULL(root->pe_first)) {
-        struct key_val_pair_PM *head = D_RW(root->pe_first);
-        TX_ADD_FIELD_DIRECT(head,pmem_list_prev);
-    	head->pmem_list_prev = typed_kv_PM;
-    }
-
+void setCurrentHead(PMEMoid new_head_oid) {
+    struct redis_pmem_root *root = pmemobj_direct(server.pm_rootoid.oid);
     TX_ADD_DIRECT(root);
-    root->pe_first = typed_kv_PM;
-    root->num_dict_entries++;
-
-    return kv_PM;
-}
-
-void
-pmemRemoveFromPmemList(PMEMoid kv_PM_oid)
-{
-    TOID(struct key_val_pair_PM) typed_kv_PM;
-    struct redis_pmem_root *root;
-
-    root = pmemobj_direct(server.pm_rootoid.oid);
-
-    typed_kv_PM.oid = kv_PM_oid;
-
-    if(TOID_EQUALS(root->pe_first, typed_kv_PM)) {
-    	TOID(struct key_val_pair_PM) typed_kv_PM_next = D_RO(typed_kv_PM)->pmem_list_next;
-    	if(!TOID_IS_NULL(typed_kv_PM_next)){
-    		struct key_val_pair_PM *next = D_RW(typed_kv_PM_next);
-    		TX_ADD_FIELD_DIRECT(next,pmem_list_prev);
-    		next->pmem_list_prev.oid = OID_NULL;
-    	}
-    	TX_FREE(root->pe_first);
-    	TX_ADD_DIRECT(root);
-    	root->pe_first = typed_kv_PM_next;
-        root->num_dict_entries--;
-        return;
+    if (root->current_head == 0) {
+        root->first_head.oid = new_head_oid;
+    } else {
+        root->second_head.oid = new_head_oid;
     }
-    else {
-    	TOID(struct key_val_pair_PM) typed_kv_PM_prev = D_RO(typed_kv_PM)->pmem_list_prev;
-    	TOID(struct key_val_pair_PM) typed_kv_PM_next = D_RO(typed_kv_PM)->pmem_list_next;
-    	if(!TOID_IS_NULL(typed_kv_PM_prev)){
-    		struct key_val_pair_PM *prev = D_RW(typed_kv_PM_prev);
-    		TX_ADD_FIELD_DIRECT(prev,pmem_list_next);
-    		prev->pmem_list_next = typed_kv_PM_next;
-    	}
-    	if(!TOID_IS_NULL(typed_kv_PM_next)){
-    		struct key_val_pair_PM *next = D_RW(typed_kv_PM_next);
-    		TX_ADD_FIELD_DIRECT(next,pmem_list_prev);
-    		next->pmem_list_prev = typed_kv_PM_prev;
-    	}
-    	TX_FREE(typed_kv_PM);
-    	TX_ADD_FIELD_DIRECT(root,num_dict_entries);
-        root->num_dict_entries--;
-        return;
-    }
-}
-
-#ifdef USE_PB
-int pmemReconstructPB(void) {
-    // TODO(totoro): Implement Reconstruct logics.
-    return -1;
 }
 
 PMEMoid pmemAddToPBList(void *cmd) {
     // TODO(totoro): Implement Add persistent_aof_log logics.
-    return OID_NULL;
+    PMEMoid cmd_oid;
+    PMEMoid paof_log_oid;
+    struct persistent_aof_log *paof_log_ptr;
+    TOID(struct persistent_aof_log) paof_log_toid;
+    struct redis_pmem_root *root;
+
+    cmd_oid.pool_uuid_lo = server.pool_uuid_lo;
+    cmd_oid.off = (uint64_t)cmd - (uint64_t)server.pm_pool->addr;
+
+    paof_log_oid = pmemobj_tx_zalloc(sizeof(struct persistent_aof_log), pm_type_persistent_aof_log);
+    paof_log_ptr = (struct persistent_aof_log *) pmemobj_direct(paof_log_oid);
+    paof_log_ptr->cmd_oid = cmd_oid;
+    paof_log_toid.oid = paof_log_oid;
+
+    root = pmemobj_direct(server.pm_rootoid.oid);
+
+    TOID(struct persistent_aof_log) head;
+    head.oid = getCurrentHead();
+
+    paof_log_ptr->next = head;
+    if(!TOID_IS_NULL(head)) {
+        struct persistent_aof_log *head_ptr = D_RW(head);
+        TX_ADD_FIELD_DIRECT(head_ptr, prev);
+    	head_ptr->prev = paof_log_toid;
+    }
+
+    setCurrentHead(paof_log_toid.oid);
+    TX_ADD_DIRECT(root);
+    root->num_logs++;
+
+    return paof_log_oid;
 }
 
-void pmemClearPBList() {
-    // TODO(totoro): Implement clear logics.
+void pmemSwitchDoubleBuffer() {
+    struct redis_pmem_root *root = pmemobj_direct(server.pm_rootoid.oid);
+    TX_ADD_DIRECT(root);
+    root->current_head = !root->current_head;
 }
-#endif
+
+void pmemClearPBList(PMEMoid head) {
+    struct redis_pmem_root *root = pmemobj_direct(server.pm_rootoid.oid);
+    TOID(struct persistent_aof_log) log_toid;
+    int freed = 0;
+    log_toid.oid = head;
+
+    while (1) {
+        if (TOID_IS_NULL(log_toid))
+            break;
+        TOID(struct persistent_aof_log) next_toid = D_RO(log_toid)->next;
+        TX_FREE(log_toid);
+        log_toid = next_toid;
+        freed++;
+    }
+    setCurrentHead(OID_NULL);
+    TX_ADD_DIRECT(root);
+    root->num_logs -= freed;
+}
 
 #endif
 

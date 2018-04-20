@@ -33,12 +33,6 @@
 #include <signal.h>
 #include <ctype.h>
 
-#ifdef USE_PMDK
-#include "obj.h"
-#include "libpmemobj.h"
-#endif
-
-
 extern struct redisServer server; /* server global state */
 
 void slotToKeyAdd(robj *key);
@@ -171,26 +165,6 @@ void dbAdd(redisDb *db, robj *key, robj *val) {
     if (server.cluster_enabled) slotToKeyAdd(key);
  }
 
-#ifdef USE_PMDK
-/*
- * Add the key to the DB using libpmemobj transactions.
- */
-void dbAddPM(redisDb *db, robj *key, robj *val) {
-    PMEMoid kv_PM;
-    PMEMoid *kv_pm_reference;
-
-    sds copy = sdsdupPM(key->ptr, (void **) &kv_pm_reference);
-    int retval = dictAddPM(db->dict, copy, val);
-
-    kv_PM = pmemAddToPmemList((void *)copy, (void *)(val->ptr));
-    *kv_pm_reference = kv_PM;
-
-    serverAssertWithInfo(NULL,key,retval == C_OK);
-    if (val->type == OBJ_LIST) signalListAsReady(db, key);
-    if (server.cluster_enabled) slotToKeyAdd(key);
- }
-#endif
-
 /* Overwrite an existing key with a new value. Incrementing the reference
  * count of the new value is up to the caller.
  * This function does not modify the expire time of the existing key.
@@ -202,20 +176,6 @@ void dbOverwrite(redisDb *db, robj *key, robj *val) {
     serverAssertWithInfo(NULL,key,de != NULL);
     dictReplace(db->dict, key->ptr, val);
 }
-
-#ifdef USE_PMDK
-/* Overwrite an existing key with a new value. Incrementing the reference
- * count of the new value is up to the caller.
- * This function does not modify the expire time of the existing key.
- *
- * The program is aborted if the key was not already present. */
-void dbOverwritePM(redisDb *db, robj *key, robj *val) {
-    dictEntry *de = dictFind(db->dict,key->ptr);
-
-    serverAssertWithInfo(NULL,key,de != NULL);
-    dictReplacePM(db->dict, key->ptr, val);
-}
-#endif
 
 /* High level Set operation. This function can be used in order to set
  * a key, whatever it was existing or not, to a new object.
@@ -233,20 +193,6 @@ void setKey(redisDb *db, robj *key, robj *val) {
     removeExpire(db,key);
     signalModifiedKey(db,key);
 }
-
-#ifdef USE_PMDK
-/* High level Set operation. Used for PM */
-void setKeyPM(redisDb *db, robj *key, robj *val) {
-    if (lookupKeyWrite(db,key) == NULL) {
-        dbAddPM(db,key,val);
-    } else {
-        dbOverwritePM(db,key,val);
-    }
-    /* TODO: incrRefCount(val); */
-    removeExpire(db,key);
-    signalModifiedKey(db,key);
-}
-#endif
 
 int dbExists(redisDb *db, robj *key) {
     return dictFind(db->dict,key->ptr) != NULL;

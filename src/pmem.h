@@ -30,18 +30,20 @@
 #ifndef __PMEM_H
 #define __PMEM_H
 
-#ifdef USE_PMDK
-typedef struct key_val_pair_PM {
-    PMEMoid key_oid;
-    PMEMoid val_oid;
-    TOID(struct key_val_pair_PM) pmem_list_next;
-    TOID(struct key_val_pair_PM) pmem_list_prev;
-} key_val_pair_PM;
+#ifdef USE_PB
+// Alias: PB
+typedef struct persistent_aof_log {
+    PMEMoid cmd_oid;
+    TOID(struct persistent_aof_log) next;
+    TOID(struct persistent_aof_log) prev;
+} persistent_aof_log;
 
-int pmemReconstruct(void);
-void pmemKVpairSet(void *key, void *val);
-PMEMoid pmemAddToPmemList(void *key, void *val);
-void pmemRemoveFromPmemList(PMEMoid kv_PM_oid);
+int pmemReconstructPB(void);
+PMEMoid getCurrentHead();
+void setCurrentHead(PMEMoid new_head_oid);
+PMEMoid pmemAddToPBList(void *cmd);
+void pmemSwitchDoubleBuffer();
+void pmemClearPBList(PMEMoid head);
 #endif
 
 #endif
