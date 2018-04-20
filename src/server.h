@@ -199,7 +199,7 @@ typedef long long mstime_t; /* millisecond time type. */
 #endif
 
 #ifdef USE_PB
-#define CONFIG_MIN_AOF_FLUSH_TIMER 1000
+#define CONFIG_MIN_AOF_FLUSH_TIMER 0
 #endif
 
 #define ACTIVE_EXPIRE_CYCLE_LOOKUPS_PER_LOOP 20 /* Loopkups per loop. */

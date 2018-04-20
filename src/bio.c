@@ -182,6 +182,7 @@ void *bioProcessBackgroundJobs(void *arg) {
         if (type == BIO_CLOSE_FILE) {
             close((long)job->arg1);
         } else if (type == BIO_AOF_FSYNC) {
+            serverLog(LL_PB, "PB: aof fsync processed");
             aof_fsync((long)job->arg1);
         } else {
             serverPanic("Wrong job type in bioProcessBackgroundJobs().");
