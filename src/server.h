@@ -1748,6 +1748,7 @@ void securityWarningCommand(client *c);
 #ifdef USE_PB
 void getDramStatusCommand(client *c);
 void getPBListStatusCommand(client *c);
+void getAnotherPBListStatusCommand(client *c);
 void addPBListCommand(client *c);
 void switchPBListCommand(client *c);
 void clearCurrentPBListCommand(client *c);

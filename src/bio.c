@@ -60,6 +60,10 @@
 
 #include "server.h"
 #include "bio.h"
+#ifdef USE_PB
+#include "libpmemobj.h"
+#include "pmem.h"
+#endif
 
 static pthread_t bio_threads[BIO_NUM_OPS];
 static pthread_mutex_t bio_mutex[BIO_NUM_OPS];
@@ -182,8 +186,16 @@ void *bioProcessBackgroundJobs(void *arg) {
         if (type == BIO_CLOSE_FILE) {
             close((long)job->arg1);
         } else if (type == BIO_AOF_FSYNC) {
-            serverLog(LL_PB, "PB: aof fsync processed");
             aof_fsync((long)job->arg1);
+#ifdef USE_PB
+            serverLog(LL_PB, "PB: aof fsync processed");
+            TX_BEGIN(server.pm_pool) {
+                pmemSwitchDoubleBuffer();
+                pmemClearPBList(getAnotherHead());
+            } TX_ONABORT {
+                serverLog(LL_PB, "PB ERROR: clear buffer failed");
+            } TX_END
+#endif
         } else {
             serverPanic("Wrong job type in bioProcessBackgroundJobs().");
         }

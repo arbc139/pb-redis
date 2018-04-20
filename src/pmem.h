@@ -40,7 +40,9 @@ typedef struct persistent_aof_log {
 
 int pmemReconstructPB(void);
 PMEMoid getCurrentHead();
+PMEMoid getAnotherHead();
 void setCurrentHead(PMEMoid new_head_oid);
+void setAnotherHead(PMEMoid new_head_oid);
 PMEMoid pmemAddToPBList(void *cmd);
 void pmemSwitchDoubleBuffer();
 void pmemClearPBList(PMEMoid head);

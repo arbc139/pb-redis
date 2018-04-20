@@ -299,6 +299,7 @@ struct redisCommand redisCommandTable[] = {
 #ifdef USE_PB
     {"dramstatus",getDramStatusCommand,1,"r",0,NULL,0,0,0,0,0},
     {"getpblist",getPBListStatusCommand,1,"r",0,NULL,0,0,0,0,0},
+    {"getanotherpblist",getAnotherPBListStatusCommand,1,"r",0,NULL,0,0,0,0,0},
     {"addpblist",addPBListCommand,-2,"wm",0,NULL,1,1,1,0,0},
     {"switchpblist",switchPBListCommand,1,"r",0,NULL,0,0,0,0,0},
     {"clearcurrentpblist",clearCurrentPBListCommand,1,"r",0,NULL,0,0,0,0,0},

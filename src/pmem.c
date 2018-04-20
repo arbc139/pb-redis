@@ -44,6 +44,12 @@ PMEMoid getCurrentHead() {
     return root->second_head.oid;
 }
 
+PMEMoid getAnotherHead() {
+    struct redis_pmem_root *root = pmemobj_direct(server.pm_rootoid.oid);
+    if (root->current_head == 0) return root->second_head.oid;
+    return root->first_head.oid;
+}
+
 void setCurrentHead(PMEMoid new_head_oid) {
     struct redis_pmem_root *root = pmemobj_direct(server.pm_rootoid.oid);
     TX_ADD_DIRECT(root);
@@ -54,6 +60,15 @@ void setCurrentHead(PMEMoid new_head_oid) {
     }
 }
 
+void setAnotherHead(PMEMoid new_head_oid) {
+    struct redis_pmem_root *root = pmemobj_direct(server.pm_rootoid.oid);
+    TX_ADD_DIRECT(root);
+    if (root->current_head == 0) {
+        root->second_head.oid = new_head_oid;
+    } else {
+        root->first_head.oid = new_head_oid;
+    }
+}
 PMEMoid pmemAddToPBList(void *cmd) {
     // TODO(totoro): Implement Add persistent_aof_log logics.
     PMEMoid cmd_oid;
@@ -101,15 +116,25 @@ void pmemClearPBList(PMEMoid head) {
     int freed = 0;
     log_toid.oid = head;
 
+    void *pmem_base_addr = (void *)server.pm_pool->addr;
     while (1) {
         if (TOID_IS_NULL(log_toid))
             break;
         TOID(struct persistent_aof_log) next_toid = D_RO(log_toid)->next;
+        struct persistent_aof_log *log_obj = (persistent_aof_log *)(
+                log_toid.oid.off + (uint64_t) pmem_base_addr
+        );
+        sds cmd = (sds)(log_obj->cmd_oid.off + (uint64_t) pmem_base_addr);
+        sdsfreePM(cmd);
         TX_FREE(log_toid);
         log_toid = next_toid;
         freed++;
     }
-    setCurrentHead(OID_NULL);
+    if (OID_EQUALS(head, getCurrentHead())) {
+        setCurrentHead(OID_NULL);
+    } else {
+        setAnotherHead(OID_NULL);
+    }
     TX_ADD_DIRECT(root);
     root->num_logs -= freed;
 }

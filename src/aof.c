@@ -30,6 +30,11 @@
 #include "server.h"
 #include "bio.h"
 #include "rio.h"
+#ifdef USE_PB
+#include "libpmemobj.h"
+#include "pmem.h"
+#include "sds.h"
+#endif
 
 #include <signal.h>
 #include <fcntl.h>
@@ -554,6 +559,15 @@ void feedAppendOnlyFile(struct redisCommand *cmd, int dictid, robj **argv, int a
      * can append the differences to the new append only file. */
     if (server.aof_child_pid != -1)
         aofRewriteBufferAppend((unsigned char*)buf,sdslen(buf));
+
+#ifdef USE_PB
+    void* reference;
+    TX_BEGIN(server.pm_pool) {
+        pmemAddToPBList(sdsdupPM(buf, &reference));
+    } TX_ONABORT {
+        serverLog(LL_PB, "PB ERROR: add command to PB list failed");
+    } TX_END
+#endif
 
     sdsfree(buf);
 }
