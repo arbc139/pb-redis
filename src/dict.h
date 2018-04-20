@@ -52,14 +52,6 @@ typedef struct dictEntry {
         int64_t s64;
         double d;
     } v;
-#ifdef TODIS
-    /*
-     * TODIS - Data location : Memory or Persistent store
-     * 0 : DRAM, 1 : PMEM
-     * TODO Need to change as an atomic variable
-     * */
-    unsigned location:1;
-#endif
     struct dictEntry *next;
 } dictEntry;
 
@@ -68,8 +60,8 @@ typedef struct dictType {
     void *(*keyDup)(void *privdata, const void *key);
     void *(*valDup)(void *privdata, const void *obj);
     int (*keyCompare)(void *privdata, const void *key1, const void *key2);
-    void (*keyDestructor)(void *privdata, dictEntry *entry, void *key);
-    void (*valDestructor)(void *privdata, dictEntry *entry, void *obj);
+    void (*keyDestructor)(void *privdata, void *key);
+    void (*valDestructor)(void *privdata, void *obj);
 } dictType;
 
 /* This is our hash table structure. Every dictionary has two of this as we
@@ -79,9 +71,6 @@ typedef struct dictht {
     unsigned long size;
     unsigned long sizemask;
     unsigned long used;
-#ifdef TODIS
-    unsigned long pmem_used;
-#endif
 } dictht;
 
 typedef struct dict {
@@ -113,7 +102,7 @@ typedef void (dictScanFunction)(void *privdata, const dictEntry *de);
 /* ------------------------------- Macros ------------------------------------*/
 #define dictFreeVal(d, entry) \
     if ((d)->type->valDestructor) \
-        (d)->type->valDestructor((d)->privdata, entry, (entry)->v.val)
+        (d)->type->valDestructor((d)->privdata, (entry)->v.val)
 
 #define dictSetVal(d, entry, _val_) do { \
     if ((d)->type->valDup) \
@@ -133,7 +122,7 @@ typedef void (dictScanFunction)(void *privdata, const dictEntry *de);
 
 #define dictFreeKey(d, entry) \
     if ((d)->type->keyDestructor) \
-        (d)->type->keyDestructor((d)->privdata, entry, (entry)->key)
+        (d)->type->keyDestructor((d)->privdata, (entry)->key)
 
 #define dictSetKey(d, entry, _key_) do { \
     if ((d)->type->keyDup) \
@@ -155,9 +144,6 @@ typedef void (dictScanFunction)(void *privdata, const dictEntry *de);
 #define dictGetDoubleVal(he) ((he)->v.d)
 #define dictSlots(d) ((d)->ht[0].size+(d)->ht[1].size)
 #define dictSize(d) ((d)->ht[0].used+(d)->ht[1].used)
-#ifdef TODIS
-#define dictSizePM(d) ((d)->ht[0].pmem_used + (d)->ht[1].pmem_used)
-#endif
 #define dictIsRehashing(d) ((d)->rehashidx != -1)
 
 /* API */
@@ -168,8 +154,7 @@ dictEntry *dictAddRaw(dict *d, void *key);
 int dictReplace(dict *d, void *key, void *val);
 dictEntry *dictReplaceRaw(dict *d, void *key);
 int dictDelete(dict *d, const void *key);
-dictEntry *dictUnlink(dict *d, const void *key);
-void dictFreeUnlinkedEntry(dict *d, dictEntry *he);
+int dictDeleteNoFree(dict *d, const void *key);
 void dictRelease(dict *d);
 dictEntry * dictFind(dict *d, const void *key);
 void *dictFetchValue(dict *d, const void *key);
@@ -179,13 +164,7 @@ dictIterator *dictGetSafeIterator(dict *d);
 dictEntry *dictNext(dictIterator *iter);
 void dictReleaseIterator(dictIterator *iter);
 dictEntry *dictGetRandomKey(dict *d);
-#ifdef TODIS
-dictEntry *dictGetRandomKeyPM(dict *d);
-#endif
 unsigned int dictGetSomeKeys(dict *d, dictEntry **des, unsigned int count);
-#ifdef TODIS
-unsigned int dictGetSomeKeysPM(dict *d, dictEntry **des, unsigned int count);
-#endif
 void dictGetStats(char *buf, size_t bufsize, dict *d);
 unsigned int dictGenHashFunction(const void *key, int len);
 unsigned int dictGenCaseHashFunction(const unsigned char *buf, int len);
@@ -202,12 +181,8 @@ unsigned long dictScan(dict *d, unsigned long v, dictScanFunction *fn, void *pri
 /* PMEM-specific API */
 int dictAddPM(dict *d, void *key, void *val);
 dictEntry *dictAddRawPM(dict *d, void *key);
-void dictAddReconstructedPM(dict *d, void *key, void *val);
+dictEntry *dictAddReconstructedPM(dict *d, void *key, void *val);
 int dictReplacePM(dict *d, void *key, void *val);
-#endif
-#ifdef TODIS
-int dictAddReconstructedVictim(dict *d, void *key, void *val);
-int dictReplaceTODIS(dict *d, void *key, void *val);
 #endif
 
 /* Hash table types */

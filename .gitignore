@@ -27,7 +27,3 @@ deps/lua/src/liblua.a
 .make-*
 .prerequisites
 *.dSYM
-.vscode/
-**/tags
-*.aof
-.*.swo

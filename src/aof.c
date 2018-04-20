@@ -40,10 +40,6 @@
 #include <sys/wait.h>
 #include <sys/param.h>
 
-#ifdef TODIS
-#include "pmem.h"
-#endif
-
 void aofUpdateCurrentSize(void);
 void aofClosePipes(void);
 
@@ -203,54 +199,15 @@ ssize_t aofRewriteBufferWrite(int fd) {
 /* Starts a background task that performs fsync() against the specified
  * file descriptor (the one of the AOF file) in another thread. */
 void aof_background_fsync(int fd) {
-    bioCreateBackgroundJob(
-            BIO_AOF_FSYNC,
-            (void*)(long)fd,
-            NULL,
-            NULL);
+    bioCreateBackgroundJob(BIO_AOF_FSYNC,(void*)(long)fd,NULL,NULL);
 }
-
-#ifdef TODIS
-void aof_background_fsync_TODIS(int fd) {
-    PMEMoid *victim_first_ptr = zmalloc(sizeof(PMEMoid));
-    TX_BEGIN(server.pm_pool) {
-        struct redis_pmem_root *root;
-        root = pmemobj_direct(server.pm_rootoid.oid); 
-        *victim_first_ptr = root->victim_first.oid;
-    } TX_ONABORT {
-        serverLog(LL_TODIS, "TODIS_ERROR, getting root failed");
-    } TX_END
-
-    bioCreateBackgroundJob(
-            BIO_AOF_FSYNC,
-            (void*)(long)fd,
-            (void*)victim_first_ptr,
-            NULL);
-}
-#endif
-
-#ifdef TODIS
-void aofFsyncWithFlushVictim(int fd) {
-    aof_fsync(fd);
-    TX_BEGIN(server.pm_pool) {
-        struct redis_pmem_root *root = getPmemRootObject();
-        freeVictimList(root->victim_first.oid);
-    } TX_ONABORT {
-        serverLog(LL_TODIS, "TODIS_ERROR, free victim list failed: (%s)", __func__);
-    } TX_END
-}
-#endif
 
 /* Called when the user switches from "appendonly yes" to "appendonly no"
  * at runtime using the CONFIG command. */
 void stopAppendOnly(void) {
     serverAssert(server.aof_state != AOF_OFF);
     flushAppendOnlyFile(1);
-#ifdef TODIS
-    aofFsyncWithFlushVictim(server.aof_fd);
-#else
     aof_fsync(server.aof_fd);
-#endif
     close(server.aof_fd);
 
     server.aof_fd = -1;
@@ -478,42 +435,16 @@ void flushAppendOnlyFile(int force) {
         /* aof_fsync is defined as fdatasync() for Linux in order to avoid
          * flushing metadata. */
         latencyStartMonitor(latency);
-#ifdef TODIS
-        aofFsyncWithFlushVictim(server.aof_fd);
-#else
         aof_fsync(server.aof_fd); /* Let's try to get this data on the disk */
-#endif
         latencyEndMonitor(latency);
         latencyAddSampleIfNeeded("aof-fsync-always",latency);
         server.aof_last_fsync = server.unixtime;
     } else if ((server.aof_fsync == AOF_FSYNC_EVERYSEC &&
                 server.unixtime > server.aof_last_fsync)) {
-        if (!sync_in_progress) {
-#ifdef TODIS
-            aof_background_fsync_TODIS(server.aof_fd); 
-#else
-            aof_background_fsync(server.aof_fd);
-#endif
-        }
-        server.aof_last_fsync = server.unixtime;
-    }
-#ifdef TODIS
-    serverLog(LL_TODIS, "TODIS, flushAppendOnlyFile FIRED");
-#endif
-}
-
-#ifdef TODIS
-void forceFlushAppendOnlyFileTODIS(void) {
-    if (server.aof_fsync == AOF_FSYNC_ALWAYS) {
-        /* Let's try to get this data on the disk */
-        aofFsyncWithFlushVictim(server.aof_fd);
-        server.aof_last_fsync = server.unixtime;
-    } else if (server.aof_fsync == AOF_FSYNC_EVERYSEC) {
-        aof_background_fsync_TODIS(server.aof_fd);
+        if (!sync_in_progress) aof_background_fsync(server.aof_fd);
         server.aof_last_fsync = server.unixtime;
     }
 }
-#endif
 
 sds catAppendOnlyGenericCommand(sds dst, int argc, robj **argv) {
     char buf[32];
@@ -627,38 +558,6 @@ void feedAppendOnlyFile(struct redisCommand *cmd, int dictid, robj **argv, int a
     sdsfree(buf);
 }
 
-#ifdef TODIS
-/**
- * feedAppendOnlyFileTODIS
- * AOF feed implementation for TODIS.
- * DB: target DB.
- * key: Evicted DRAM key
- * val: Evicted DRAM val
- */
-void feedAppendOnlyFileTODIS(redisDb *db, robj *key, robj *val) {
-    robj *argv[3];
-    serverLog(LL_TODIS, "   ");
-    serverLog(LL_TODIS, "TODIS, feedAppendOnlyFile START");
-
-    argv[0] = createStringObject("AOFSET", 6);
-    argv[1] = key;
-    argv[2] = val;
-    incrRefCount(argv[1]);
-    incrRefCount(argv[2]);
-
-    serverLog(LL_TODIS, "TODIS, command: %s", (char *) argv[0]->ptr);
-    serverLog(LL_TODIS, "TODIS, key: %s", (sds) argv[1]->ptr);
-    serverLog(LL_TODIS, "TODIS, value: %s", (sds) argv[2]->ptr);
-
-    feedAppendOnlyFile(server.aofSetCommand, db->id, argv, 3);
-
-    decrRefCount(argv[0]);
-    decrRefCount(argv[1]);
-    decrRefCount(argv[2]);
-    serverLog(LL_TODIS, "TODIS, feedAppendOnlyFile END");
-}
-#endif
-
 /* ----------------------------------------------------------------------------
  * AOF loading
  * ------------------------------------------------------------------------- */
@@ -712,9 +611,6 @@ void freeFakeClient(struct client *c) {
  * error (the append only file is zero-length) C_ERR is returned. On
  * fatal error an error message is logged and the program exists. */
 int loadAppendOnlyFile(char *filename) {
-#ifdef TODIS
-    serverLog(LL_TODIS, "TODIS, loadAppendOnlyFile START");
-#endif
     struct client *fakeClient;
     FILE *fp = fopen(filename,"r");
     struct redis_stat sb;
@@ -824,9 +720,6 @@ loaded_ok: /* DB loaded, cleanup and return C_OK to the caller. */
     stopLoading();
     aofUpdateCurrentSize();
     server.aof_rewrite_base_size = server.aof_current_size;
-#ifdef TODIS
-    serverLog(LL_TODIS, "TODIS, loadAppendOnlyFile END");
-#endif
     return C_OK;
 
 readerr: /* Read error. If feof(fp) is true, fall through to unexpected EOF. */
@@ -1560,18 +1453,9 @@ void backgroundRewriteDoneHandler(int exitcode, int bysignal) {
             oldfd = server.aof_fd;
             server.aof_fd = newfd;
             if (server.aof_fsync == AOF_FSYNC_ALWAYS)
-#ifdef TODIS
-                aofFsyncWithFlushVictim(newfd);
-#else
                 aof_fsync(newfd);
-#endif
-            else if (server.aof_fsync == AOF_FSYNC_EVERYSEC) {
-#ifdef TODIS
-                aof_background_fsync_TODIS(newfd);
-#else
+            else if (server.aof_fsync == AOF_FSYNC_EVERYSEC)
                 aof_background_fsync(newfd);
-#endif
-            }
             server.aof_selected_db = -1; /* Make sure SELECT is re-issued */
             aofUpdateCurrentSize();
             server.aof_rewrite_base_size = server.aof_current_size;

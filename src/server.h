@@ -77,16 +77,8 @@ uint64_t pm_type_emb_sds_type_id;
 struct redis_pmem_root {
 	uint64_t num_dict_entries;
 	TOID(struct key_val_pair_PM) pe_first;
-    TOID(struct key_val_pair_PM) pe_last;
-    uint64_t num_victim_entries;
-    TOID(struct key_val_pair_PM) victim_first;
 };
 
-#endif
-
-#ifdef TODIS
-#define LOCATION_DRAM 0
-#define LOCATION_PMEM 1
 #endif
 
 typedef long long mstime_t; /* millisecond time type. */
@@ -185,13 +177,6 @@ typedef long long mstime_t; /* millisecond time type. */
 #ifdef USE_PMDK
 #define CONFIG_MIN_PM_FILE_SIZE PMEMOBJ_MIN_POOL
 #define CONFIG_DEFAULT_PM_FILE_SIZE (1024*1024*1024) /* 1GB */
-#endif
-
-#ifdef TODIS
-#define CONFIG_MIN_MAX_PMEM_MEMORY_SIZE 1024 /* 1KB */
-#define CONFIG_DEFAULT_MAX_PMEM_MEMORY_SIZE CONFIG_MIN_MAX_PMEM_MEMORY_SIZE
-#define CONFIG_DEFAULT_TODIS_LOG_ONLY 0
-#define CONFIG_MIN_PMEM_VICTIM_COUNT 1
 #endif
 
 #define ACTIVE_EXPIRE_CYCLE_LOOKUPS_PER_LOOP 20 /* Loopkups per loop. */
@@ -392,18 +377,10 @@ typedef long long mstime_t; /* millisecond time type. */
 #define SORT_OP_GET 0
 
 /* Log levels */
-#ifdef TODIS
-#define LL_TODIS 0
-#define LL_DEBUG 1
-#define LL_VERBOSE 2
-#define LL_NOTICE 3
-#define LL_WARNING 4
-#else
 #define LL_DEBUG 0
 #define LL_VERBOSE 1
 #define LL_NOTICE 2
 #define LL_WARNING 3
-#endif
 #define LL_RAW (1<<10) /* Modifier to log without timestamp */
 #define CONFIG_DEFAULT_VERBOSITY LL_NOTICE
 
@@ -815,9 +792,6 @@ struct redisServer {
     /* Fast pointers to often looked up command */
     struct redisCommand *delCommand, *multiCommand, *lpushCommand, *lpopCommand,
                         *rpopCommand, *sremCommand, *execCommand;
-#ifdef TODIS
-    struct redisCommand *aofSetCommand;
-#endif
     /* Fields used only for stats */
     time_t stat_starttime;          /* Server start time */
     long long stat_numcommands;     /* Number of processed commands */
@@ -868,22 +842,6 @@ struct redisServer {
     PMEMobjpool *pm_pool;           /* PMEM pool handle */
     TOID(struct redis_pmem_root) pm_rootoid; /*PMEM root object OID*/
     uint64_t pool_uuid_lo;          /* PMEM pool UUID */
-#endif
-#ifdef TODIS
-    long long process_time;         /* TEMP: time checking for process command */
-    long long pmem_list_time;       /* TEMP: time checking for pmem list */
-    long long free_pmem_time_find_victim_key;
-    long long free_pmem_time_make_dram_key_val;
-    long long free_pmem_time_dict_unlink;
-    long long free_pmem_time_pmem_eviction;
-    long long free_pmem_time_pmem_entry_free;
-    long long free_pmem_time_add_dram_entry;
-    long long free_pmem_time_feed_dram_log;
-    size_t used_pmem_memory;        /* Used memory capacity in pmem */
-    size_t max_pmem_memory;         /* Maximum memory capacity for pmem */
-    int max_pmem_memory_policy;     /* Policy for key eviction */
-    size_t pmem_victim_count;       /* Number of Victim in eviction */
-    int todis_log_only;             /* Force to write todis log only */
 #endif
     /* AOF persistence */
     int aof_state;                  /* AOF_(ON|OFF|WAIT_REWRITE) */
@@ -1363,11 +1321,6 @@ void stopLoading(void);
 /* AOF persistence */
 void flushAppendOnlyFile(int force);
 void feedAppendOnlyFile(struct redisCommand *cmd, int dictid, robj **argv, int argc);
-#ifdef TODIS
-void aofFsyncWithFlushVictim(int fd);
-void feedAppendOnlyFileTODIS(redisDb *db, robj *key, robj *val);
-void forceFlushAppendOnlyFileTODIS();
-#endif
 void aofRemoveTempFile(pid_t childpid);
 int rewriteAppendOnlyFileBackground(void);
 int loadAppendOnlyFile(char *filename);
@@ -1409,10 +1362,6 @@ unsigned long zslGetRank(zskiplist *zsl, double score, robj *o);
 
 /* Core functions */
 int freeMemoryIfNeeded(void);
-#ifdef TODIS
-int freePmemMemoryIfNeeded(void);
-void writeStatusLogs(void);
-#endif
 int processCommand(client *c);
 void setupSignalHandlers(void);
 struct redisCommand *lookupCommand(sds name);
@@ -1508,10 +1457,6 @@ int rewriteConfig(char *path);
 /* db.c -- Keyspace access API */
 int removeExpire(redisDb *db, robj *key);
 void propagateExpire(redisDb *db, robj *key);
-#ifdef TODIS
-int dbReconstructVictim(redisDb *db, robj *key, robj *val);
-void propagateExpireTODIS(redisDb *db, dictEntry *entry);
-#endif
 int expireIfNeeded(redisDb *db, robj *key);
 long long getExpire(redisDb *db, robj *key);
 void setExpire(redisDb *db, robj *key, long long when);
@@ -1521,10 +1466,6 @@ robj *lookupKeyWrite(redisDb *db, robj *key);
 robj *lookupKeyReadOrReply(client *c, robj *key, robj *reply);
 robj *lookupKeyWriteOrReply(client *c, robj *key, robj *reply);
 robj *lookupKeyReadWithFlags(redisDb *db, robj *key, int flags);
-#ifdef TODIS
-dictEntry *lookupKeyWriteEntry(redisDb *db, robj *key);
-dictEntry *lookupKeyEntry(redisDb *db, robj *key);
-#endif
 #define LOOKUP_NONE 0
 #define LOOKUP_NOTOUCH (1<<0)
 void dbAdd(redisDb *db, robj *key, robj *val);
@@ -1536,8 +1477,6 @@ void setKeyPM(redisDb *db, robj *key, robj *val);
 int dbExists(redisDb *db, robj *key);
 robj *dbRandomKey(redisDb *db);
 int dbDelete(redisDb *db, robj *key);
-dictEntry *dbDeleteNoFree(redisDb *db, robj *key);
-void dbFreeEntry(redisDb *db, dictEntry *de);
 robj *dbUnshareStringValue(redisDb *db, robj *key, robj *o);
 long long emptyDb(void(callback)(void*));
 int selectDb(client *c, int id);
@@ -1768,15 +1707,6 @@ void pfmergeCommand(client *c);
 void pfdebugCommand(client *c);
 void latencyCommand(client *c);
 void securityWarningCommand(client *c);
-#ifdef TODIS
-void aofSetCommand(client *c);
-void getPmemProcessTimeCommand(client *c);
-void getPmemStatusCommand(client *c);
-void getDramStatusCommand(client *c);
-void getListPmemStatusCommand(client *c);
-void getReverseListPmemStatusCommand(client *c);
-void getListVictimStatusCommand(client *c);
-#endif
 
 #if defined(__GNUC__)
 void *calloc(size_t count, size_t size) __attribute__ ((deprecated));

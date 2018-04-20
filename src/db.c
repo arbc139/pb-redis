@@ -38,6 +38,7 @@
 #include "libpmemobj.h"
 #endif
 
+
 extern struct redisServer server; /* server global state */
 
 void slotToKeyAdd(robj *key);
@@ -145,13 +146,6 @@ robj *lookupKeyWrite(redisDb *db, robj *key) {
     return lookupKey(db,key,LOOKUP_NONE);
 }
 
-#ifdef TODIS
-dictEntry *lookupKeyWriteEntry(redisDb *db, robj* key) {
-    expireIfNeeded(db, key);
-    return lookupKeyEntry(db, key);
-}
-#endif
-
 robj *lookupKeyReadOrReply(client *c, robj *key, robj *reply) {
     robj *o = lookupKeyRead(c->db, key);
     if (!o) addReply(c,reply);
@@ -164,34 +158,11 @@ robj *lookupKeyWriteOrReply(client *c, robj *key, robj *reply) {
     return o;
 }
 
-#ifdef TODIS
-dictEntry *lookupKeyEntry(redisDb *db, robj *key) {
-    return dictFind(db->dict, key->ptr);
-}
-#endif
-
-#ifdef TODIS
-int dbReconstructVictim(redisDb *db, robj *key, robj *val) {
-    serverLog(LL_TODIS, "TODIS, dbReconstructVictim START");
-    dictEntry *de = lookupKeyEntry(db, key);
-    if (de == NULL) {
-        feedAppendOnlyFileTODIS(db, key, val);
-    } else if (de->location == LOCATION_DRAM) {
-        decrRefCount(key);
-        decrRefCount(val);
-        return C_ERR;
-    }
-    serverLog(LL_TODIS, "TODIS, dictAddReconstructedVictim END");
-    return C_OK;
-}
-#endif
-
 /* Add the key to the DB. It's up to the caller to increment the reference
  * counter of the value if needed.
  *
  * The program is aborted if the key already exists. */
 void dbAdd(redisDb *db, robj *key, robj *val) {
-    serverLog(LL_VERBOSE, "REDIS LOG DBADD");
     sds copy = sdsdup(key->ptr);
     int retval = dictAdd(db->dict, copy, val);
 
@@ -242,11 +213,7 @@ void dbOverwritePM(redisDb *db, robj *key, robj *val) {
     dictEntry *de = dictFind(db->dict,key->ptr);
 
     serverAssertWithInfo(NULL,key,de != NULL);
-#ifdef TODIS
-    dictReplaceTODIS(db->dict, key->ptr, val);
-#else
     dictReplacePM(db->dict, key->ptr, val);
-#endif
 }
 #endif
 
@@ -270,15 +237,9 @@ void setKey(redisDb *db, robj *key, robj *val) {
 #ifdef USE_PMDK
 /* High level Set operation. Used for PM */
 void setKeyPM(redisDb *db, robj *key, robj *val) {
-    dictEntry *de = lookupKeyWriteEntry(db, key);
-    if (de == NULL) {
+    if (lookupKeyWrite(db,key) == NULL) {
         dbAddPM(db,key,val);
     } else {
-#ifdef TODIS
-        if (de->location == LOCATION_DRAM) {
-            propagateExpireTODIS(db, de);
-        }
-#endif
         dbOverwritePM(db,key,val);
     }
     /* TODO: incrRefCount(val); */
@@ -328,16 +289,6 @@ int dbDelete(redisDb *db, robj *key) {
     } else {
         return 0;
     }
-}
-
-dictEntry *dbDeleteNoFree(redisDb *db, robj *key) {
-    /* Deleting an entry from the expires dict will not free the sds of
-     * the key, because it is shared with the main dictionary. */
-    return dictUnlink(db->dict, key->ptr);
-}
-
-void dbFreeEntry(redisDb *db, dictEntry *de) {
-    dictFreeUnlinkedEntry(db->dict, de);
 }
 
 /* Prepare the string object stored at 'key' to be modified destructively
@@ -998,38 +949,6 @@ void propagateExpire(redisDb *db, robj *key) {
     decrRefCount(argv[1]);
 }
 
-#ifdef TODIS
-/* Propagate expires into slaves and the AOF file.
- * When a key expires in the master, a DEL operation for this key is sent
- * to all the slaves and the AOF file if enabled.
- *
- * This way the key expiry is centralized in one place, and since both
- * AOF and the master->slave link guarantee operation ordering, everything
- * will be consistent even if we allow write operations against expiring
- * keys. */
-void propagateExpireTODIS(redisDb *db, dictEntry *entry) {
-    robj *argv[2];
-    serverLog(LL_TODIS, "   ");
-    serverLog(LL_TODIS, "TODIS, propagateExpireTODIS START");
-
-    sds key = dictGetKey(entry);
-    robj *keyobj = createStringObject(key, sdslen(key));
-
-    argv[0] = shared.del;
-    argv[1] = keyobj;
-    incrRefCount(argv[0]);
-    incrRefCount(argv[1]);
-
-    if (entry->location == LOCATION_DRAM && server.aof_state != AOF_OFF)
-        feedAppendOnlyFile(server.delCommand,db->id,argv,2);
-    replicationFeedSlaves(server.slaves,db->id,argv,2);
-
-    decrRefCount(argv[0]);
-    decrRefCount(argv[1]);
-    serverLog(LL_TODIS, "TODIS, propagateExpireTODIS END");
-}
-#endif
-
 int expireIfNeeded(redisDb *db, robj *key) {
     mstime_t when = getExpire(db,key);
     mstime_t now;
@@ -1060,12 +979,7 @@ int expireIfNeeded(redisDb *db, robj *key) {
 
     /* Delete the key */
     server.stat_expiredkeys++;
-#ifdef TODIS
-    dictEntry *entry = lookupKeyEntry(db, key);
-    propagateExpireTODIS(db, entry);
-#else
     propagateExpire(db,key);
-#endif
     notifyKeyspaceEvent(NOTIFY_EXPIRED,
         "expired",key,db->id);
     return dbDelete(db,key);

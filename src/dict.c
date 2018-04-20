@@ -169,9 +169,6 @@ static void _dictReset(dictht *ht)
     ht->size = 0;
     ht->sizemask = 0;
     ht->used = 0;
-#ifdef TODIS
-    ht->pmem_used = 0;
-#endif
 }
 
 /* Create a new hash table */
@@ -230,9 +227,6 @@ int dictExpand(dict *d, unsigned long size)
     n.sizemask = realsize-1;
     n.table = zcalloc(realsize*sizeof(dictEntry*));
     n.used = 0;
-#ifdef TODIS
-    n.pmem_used = 0;
-#endif
 
     /* Is this the first initialization? If so it's not really a rehashing
      * we just set the first hash table so that it can accept keys. */
@@ -282,12 +276,6 @@ int dictRehash(dict *d, int n) {
             d->ht[1].table[h] = de;
             d->ht[0].used--;
             d->ht[1].used++;
-#ifdef TODIS
-            if (de->location == LOCATION_PMEM) {
-                d->ht[0].pmem_used--;
-                d->ht[1].pmem_used++;
-            }
-#endif
             de = nextde;
         }
         d->ht[0].table[d->rehashidx] = NULL;
@@ -345,9 +333,6 @@ int dictAdd(dict *d, void *key, void *val)
 
     if (!entry) return DICT_ERR;
     dictSetVal(d, entry, val);
-#ifdef TODIS
-    serverLog(LL_TODIS, "TODIS, dictAdd key: %s, val: %s", key, ((robj *)val)->ptr);
-#endif
     return DICT_OK;
 }
 
@@ -359,10 +344,6 @@ int dictAddPM(dict *d, void *key, void *val)
 
     if (!entry) return DICT_ERR;
     dictSetVal(d, entry, val);
-
-#ifdef TODIS
-    serverLog(LL_TODIS, "TODIS, dictAddPM key: %s, val: %s", key, ((robj *)val)->ptr);
-#endif
 
     return DICT_OK;
 }
@@ -406,9 +387,6 @@ dictEntry *dictAddRaw(dict *d, void *key)
     entry->next = ht->table[index];
     ht->table[index] = entry;
     ht->used++;
-#ifdef TODIS
-    entry->location = LOCATION_DRAM;
-#endif
 
     /* Set the hash entry fields. */
     dictSetKey(d, entry, key);
@@ -455,22 +433,14 @@ dictEntry *dictAddRawPM(dict *d, void *key)
     entry->next = ht->table[index];
     ht->table[index] = entry;
     ht->used++;
-#ifdef TODIS
-    ht->pmem_used++;
-    entry->location = LOCATION_PMEM;
-    serverLog(LL_TODIS, "TODIS, dictAddRawPM pmem used: %ld", ht->pmem_used);
-#endif
 
     /* Set the hash entry fields. */
     dictSetKey(d, entry, key);
     return entry;
 }
 
-void dictAddReconstructedPM(dict *d, void *key, void *val)
+dictEntry *dictAddReconstructedPM(dict *d, void *key, void *val)
 {
-#ifdef TODIS
-    serverLog(LL_TODIS, "TODIS, dictAddReconstructedPM START");
-#endif
     int index;
     dictEntry *entry;
     robj *val_robj;
@@ -480,17 +450,8 @@ void dictAddReconstructedPM(dict *d, void *key, void *val)
 
     /* Get the index of the new element, or -1 if
      * the element already exists. */
-    if ((index = _dictKeyIndex(d, (const void *)key)) == -1) {
-#ifdef TODIS
-        serverLog(
-                LL_TODIS,
-                "TODIS, dictAddReconstructedPM key duplicated: %s",
-                key);
-        dictReplaceTODIS(d, key, val);
-        serverLog(LL_TODIS, "TODIS, dictAddReconstructedPM duplicated replaced");
-#endif
-        return;
-    }
+    if ((index = _dictKeyIndex(d, (const void *)key)) == -1)
+        return NULL;
 
     /* Allocate the memory and store the new entry.
      * Insert the element in top, with the assumption that in a database
@@ -503,15 +464,11 @@ void dictAddReconstructedPM(dict *d, void *key, void *val)
     entry->next = ht->table[index];
     ht->table[index] = entry;
     ht->used++;
-#ifdef TODIS
-    ht->pmem_used++;
-    entry->location = LOCATION_PMEM;
-    serverLog(LL_TODIS, "TODIS, dictAddReconstructedPM pmem used: %ld", ht->pmem_used);
-    serverLog(LL_TODIS, "TODIS, dictAddReconstructedPM key: %s, val: %s", key, val);
-#endif
 
     dictSetKey(d, entry, key);
     dictSetVal(d, entry, val_robj);
+
+    return entry;
 }
 #endif
 
@@ -568,53 +525,6 @@ int dictReplacePM(dict *d, void *key, void *val)
 }
 #endif
 
-#ifdef TODIS
-/* Add an element, discarding the old if the key already exists.
- * Return 1 if the key was added from scratch, 0 if there was already an
- * element with such key and dictReplace() just performed a value update
- * operation. */
-int dictReplaceTODIS(dict *d, void *key, void *val)
-{
-    dictEntry *entry, auxentry;
-
-    /* Try to add the element. If the key
-     * does not exists dictAdd will suceed. */
-    if (dictAddPM(d, key, val) == DICT_OK)
-        return 1;
-    /* It already exists, get the entry */
-    entry = dictFind(d, key);
-    /* Set the new value and free the old one. Note that it is important
-     * to do that in this order, as the value may just be exactly the same
-     * as the previous one. In this context, think to reference counting,
-     * you want to increment (set), and then decrement (free), and not the
-     * reverse. */
-    if (entry->location == LOCATION_DRAM) {
-        serverLog(LL_TODIS, "TODIS, dictReplaceTODIS location dram");
-        PMEMoid kv_PM;
-        PMEMoid *kv_pm_reference;
-
-        sds copy = sdsdupPM(key, (void **) &kv_pm_reference);
-        dictFreeKey(d, entry);
-        dictFreeVal(d, entry);
-        dictSetKey(d, entry, copy);
-        entry->location = LOCATION_PMEM;
-        dictht *ht = dictIsRehashing(d) ? &d->ht[1] : &d->ht[0];
-        ht->pmem_used++;
-        dictSetVal(d, entry, val);
-        serverLog(LL_TODIS, "TODIS, dictReplaceTODIS set pmem location completed");
-
-        kv_PM = pmemAddToPmemList((void *)copy, (void *)(((robj *)val)->ptr));
-        *kv_pm_reference = kv_PM;
-        return 0;
-    } else {
-        auxentry = *entry;
-        dictSetVal(d, entry, val);
-        pmemKVpairSetRearrangeList(entry->key, ((robj *)val)->ptr);
-        dictFreeVal(d, &auxentry);
-        return 0;
-    }
-}
-#endif
 /* dictReplaceRaw() is simply a version of dictAddRaw() that always
  * returns the hash entry of the specified key, even if the key already
  * exists and can't be added (in that case the entry of the already
@@ -628,13 +538,13 @@ dictEntry *dictReplaceRaw(dict *d, void *key) {
 }
 
 /* Search and remove an element */
-static dictEntry *dictGenericDelete(dict *d, const void *key, int nofree)
+static int dictGenericDelete(dict *d, const void *key, int nofree)
 {
     unsigned int h, idx;
     dictEntry *he, *prevHe;
     int table;
 
-    if (d->ht[0].size == 0) return NULL; /* d->ht[0].table is NULL */
+    if (d->ht[0].size == 0) return DICT_ERR; /* d->ht[0].table is NULL */
     if (dictIsRehashing(d)) _dictRehashStep(d);
     h = dictHashKey(d, key);
 
@@ -652,37 +562,25 @@ static dictEntry *dictGenericDelete(dict *d, const void *key, int nofree)
                 if (!nofree) {
                     dictFreeKey(d, he);
                     dictFreeVal(d, he);
-                    zfree(he);
                 }
-#ifdef TODIS
-                if (he->location == LOCATION_PMEM) {
-                    d->ht[table].pmem_used--;
-                }
-#endif
+                zfree(he);
                 d->ht[table].used--;
-                return he;
+                return DICT_OK;
             }
             prevHe = he;
             he = he->next;
         }
         if (!dictIsRehashing(d)) break;
     }
-    return NULL; /* not found */
+    return DICT_ERR; /* not found */
 }
 
 int dictDelete(dict *ht, const void *key) {
-    return dictGenericDelete(ht,key,0) ? DICT_OK : DICT_ERR;
+    return dictGenericDelete(ht,key,0);
 }
 
-dictEntry *dictUnlink(dict *ht, const void *key) {
+int dictDeleteNoFree(dict *ht, const void *key) {
     return dictGenericDelete(ht,key,1);
-}
-
-void dictFreeUnlinkedEntry(dict *d, dictEntry *he) {
-    if (he == NULL) return;
-    dictFreeKey(d, he);
-    dictFreeVal(d, he);
-    zfree(he);
 }
 
 /* Destroy an entire dictionary */
@@ -700,11 +598,6 @@ int _dictClear(dict *d, dictht *ht, void(callback)(void *)) {
             nextHe = he->next;
             dictFreeKey(d, he);
             dictFreeVal(d, he);
-#ifdef TODIS
-            if (he->location == LOCATION_PMEM) {
-                ht->pmem_used--;
-            }
-#endif
             zfree(he);
             ht->used--;
             he = nextHe;
@@ -900,54 +793,6 @@ dictEntry *dictGetRandomKey(dict *d)
     return he;
 }
 
-#ifdef TODIS
-/* Return a random entry from the hash table. Useful to
- * implement randomized algorithms */
-dictEntry *dictGetRandomKeyPM(dict *d)
-{
-    dictEntry *he, *orighe;
-    unsigned int h;
-    int listlen, listele;
-
-    if (dictSize(d) == 0 || dictSizePM(d) == 0) return NULL;
-    if (dictIsRehashing(d)) _dictRehashStep(d);
-    do {
-        if (dictIsRehashing(d)) {
-            do {
-                /* We are sure there are no elements in indexes from 0
-                 * to rehashidx-1 */
-                h = d->rehashidx + (random() % (d->ht[0].size +
-                                                d->ht[1].size -
-                                                d->rehashidx));
-                he = (h >= d->ht[0].size) ? d->ht[1].table[h - d->ht[0].size] :
-                                          d->ht[0].table[h];
-            } while(he == NULL);
-        } else {
-            do {
-                h = random() & d->ht[0].sizemask;
-                he = d->ht[0].table[h];
-            } while(he == NULL);
-        }
-
-        /* Now we found a non empty bucket, but it is a linked
-         * list and we need to get a random element from the list.
-         * The only sane way to do so is counting the elements and
-         * select a random index. */
-        listlen = 0;
-        orighe = he;
-        while(he) {
-            he = he->next;
-            listlen++;
-        }
-        listele = random() % listlen;
-        he = orighe;
-        while(listele--) he = he->next;
-    } while (he->location == LOCATION_DRAM);
-
-    return he;
-}
-#endif
-
 /* This function samples the dictionary to return a few keys from random
  * locations.
  *
@@ -1036,101 +881,6 @@ unsigned int dictGetSomeKeys(dict *d, dictEntry **des, unsigned int count) {
     }
     return stored;
 }
-
-#ifdef TODIS
-/* This function samples the dictionary to return a few keys from random
- * locations.
- *
- * It does not guarantee to return all the keys specified in 'count', nor
- * it does guarantee to return non-duplicated elements, however it will make
- * some effort to do both things.
- *
- * Returned pointers to hash table entries are stored into 'des' that
- * points to an array of dictEntry pointers. The array must have room for
- * at least 'count' elements, that is the argument we pass to the function
- * to tell how many random elements we need.
- *
- * The function returns the number of items stored into 'des', that may
- * be less than 'count' if the hash table has less than 'count' elements
- * inside, or if not enough elements were found in a reasonable amount of
- * steps.
- *
- * Note that this function is not suitable when you need a good distribution
- * of the returned items, but only when you need to "sample" a given number
- * of continuous elements to run some kind of algorithm or to produce
- * statistics. However the function is much faster than dictGetRandomKey()
- * at producing N elements. */
-unsigned int dictGetSomeKeysPM(dict *d, dictEntry **des, unsigned int count) {
-    unsigned long j; /* internal hash table id, 0 or 1. */
-    unsigned long tables; /* 1 or 2 tables? */
-    unsigned long stored = 0, maxsizemask;
-    unsigned long maxsteps;
-
-    if (dictSizePM(d) < count) count = dictSizePM(d);
-    maxsteps = count*10;
-
-    /* Try to do a rehashing work proportional to 'count'. */
-    for (j = 0; j < count; j++) {
-        if (dictIsRehashing(d))
-            _dictRehashStep(d);
-        else
-            break;
-    }
-
-    tables = dictIsRehashing(d) ? 2 : 1;
-    maxsizemask = d->ht[0].sizemask;
-    if (tables > 1 && maxsizemask < d->ht[1].sizemask)
-        maxsizemask = d->ht[1].sizemask;
-
-    /* Pick a random point inside the larger table. */
-    unsigned long i = random() & maxsizemask;
-    unsigned long emptylen = 0; /* Continuous empty entries so far. */
-    while(stored < count && maxsteps--) {
-        for (j = 0; j < tables; j++) {
-            /* Invariant of the dict.c rehashing: up to the indexes already
-             * visited in ht[0] during the rehashing, there are no populated
-             * buckets, so we can skip ht[0] for indexes between 0 and idx-1. */
-            if (tables == 2 && j == 0 && i < (unsigned long) d->rehashidx) {
-                /* Moreover, if we are currently out of range in the second
-                 * table, there will be no elements in both tables up to
-                 * the current rehashing index, so we jump if possible.
-                 * (this happens when going from big to small table). */
-                if (i >= d->ht[1].size) i = d->rehashidx;
-                continue;
-            }
-            if (i >= d->ht[j].size) continue; /* Out of range for this table. */
-            dictEntry *he = d->ht[j].table[i];
-
-            /* Count contiguous empty buckets, and jump to other
-             * locations if they reach 'count' (with a minimum of 5). */
-            if (he == NULL || he->location == LOCATION_DRAM) {
-                emptylen++;
-                if (emptylen >= 5 && emptylen > count) {
-                    i = random() & maxsizemask;
-                    emptylen = 0;
-                }
-            } else {
-                emptylen = 0;
-                while (he) {
-                    /* Collect all the elements of the buckets found non
-                     * empty while iterating. */
-                    if (he->location == LOCATION_DRAM) {
-                        he = he->next;
-                        continue;
-                    }
-                    *des = he;
-                    des++;
-                    he = he->next;
-                    stored++;
-                    if (stored == count) return stored;
-                }
-            }
-        }
-        i = (i+1) & maxsizemask;
-    }
-    return stored;
-}
-#endif
 
 /* Function to reverse bits. Algorithm from:
  * http://graphics.stanford.edu/~seander/bithacks.html#ReverseParallel */

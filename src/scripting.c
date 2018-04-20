@@ -780,17 +780,10 @@ int luaLogCommand(lua_State *lua) {
         return lua_error(lua);
     }
     level = lua_tonumber(lua,-argc);
-#ifdef TODIS
-    if (level < LL_DEBUG || level > LL_TODIS) {
-        lua_pushstring(lua, "Invalid debug level.");
-        return lua_error(lua);
-    }
-#else
     if (level < LL_DEBUG || level > LL_WARNING) {
         lua_pushstring(lua, "Invalid debug level.");
         return lua_error(lua);
     }
-#endif
 
     /* Glue together all the arguments */
     log = sdsempty();
@@ -952,12 +945,6 @@ void scriptingInit(int setup) {
     lua_pushstring(lua,"LOG_WARNING");
     lua_pushnumber(lua,LL_WARNING);
     lua_settable(lua,-3);
-
-#ifdef TODIS
-    lua_pushstring(lua, "LOG_TODIS");
-    lua_pushnumber(lua,LL_TODIS);
-    lua_settable(lua, -3);
-#endif
 
     /* redis.sha1hex */
     lua_pushstring(lua, "sha1hex");

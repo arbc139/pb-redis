@@ -89,18 +89,10 @@ void setGenericCommand(client *c, int flags, robj *key, robj *val, robj *expire,
 #ifdef USE_PMDK
     if (server.persistent) {
         int error = 0;
-        robj *convertedVal = val;
 
-#ifdef TODIS
-        if (val->encoding == OBJ_ENCODING_INT) {
-            char int_str_buf[1024];
-            sprintf(int_str_buf, "%lld", val->ptr);
-            convertedVal = createStringObject(int_str_buf, strlen(int_str_buf));
-        }
-#endif
         /* Copy value from RAM to PM - create RedisObject and sds(value) */
         TX_BEGIN(server.pm_pool) {
-            newVal = dupStringObjectPM(convertedVal);
+            newVal = dupStringObjectPM(val);
             /* Set key in PM - create DictEntry and sds(key) linked to RedisObject with value
              * Don't increment value "ref counter" as in normal process. */
             setKeyPM(c->db,key,newVal);

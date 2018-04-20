@@ -1,7 +1,4 @@
-# nd-hedis
-
-NVM-DRAM Hybrid redis. \
-Implemented by totorody.
+PMEM - DRAM caching optimization version
 
 -------------
 This README is just a fast *quick start* document. You can find more detailed documentation at http://redis.io.

@@ -60,9 +60,6 @@
 
 #include "server.h"
 #include "bio.h"
-#ifdef TODIS
-#include "pmem.h"
-#endif
 
 static pthread_t bio_threads[BIO_NUM_OPS];
 static pthread_mutex_t bio_mutex[BIO_NUM_OPS];
@@ -185,19 +182,7 @@ void *bioProcessBackgroundJobs(void *arg) {
         if (type == BIO_CLOSE_FILE) {
             close((long)job->arg1);
         } else if (type == BIO_AOF_FSYNC) {
-#ifdef TODIS
-            serverLog(LL_TODIS, "TODIS, aof_fsync process...");
-#endif
             aof_fsync((long)job->arg1);
-#ifdef TODIS
-            TX_BEGIN(server.pm_pool) {
-                PMEMoid *victim_first_ptr = (PMEMoid *)job->arg2;
-                freeVictimList(*victim_first_ptr);
-                zfree(victim_first_ptr);
-            } TX_ONABORT {
-                serverLog(LL_TODIS, "TODIS, Flush victim list failed (%s)", __func__);
-            } TX_END
-#endif
         } else {
             serverPanic("Wrong job type in bioProcessBackgroundJobs().");
         }
