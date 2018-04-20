@@ -198,6 +198,10 @@ typedef long long mstime_t; /* millisecond time type. */
 #define CONFIG_DEFAULT_PM_FILE_SIZE (1024*1024*1024) /* 1GB */
 #endif
 
+#ifdef USE_PB
+#define CONFIG_MIN_AOF_FLUSH_TIMER 1000
+#endif
+
 #define ACTIVE_EXPIRE_CYCLE_LOOKUPS_PER_LOOP 20 /* Loopkups per loop. */
 #define ACTIVE_EXPIRE_CYCLE_FAST_DURATION 1000 /* Microseconds */
 #define ACTIVE_EXPIRE_CYCLE_SLOW_TIME_PERC 25 /* CPU max % for keys collection */
@@ -875,6 +879,7 @@ struct redisServer {
 #endif
 #ifdef USE_PB
     int verbosity_pb_only;          /* Force to write LL_PB log only. */
+    size_t aof_flush_timer;         /* AOF log flush timer */
 #endif
     /* AOF persistence */
     int aof_state;                  /* AOF_(ON|OFF|WAIT_REWRITE) */

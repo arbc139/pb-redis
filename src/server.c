@@ -1274,7 +1274,9 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
 
     /* AOF postponed flush: Try at every cron cycle if the slow fsync
      * completed. */
-    if (server.aof_flush_postponed_start) flushAppendOnlyFile(0);
+    if (server.aof_flush_postponed_start) {
+        flushAppendOnlyFile(0);
+    }
 
     /* AOF write errors: in this case we have a buffer to flush as well and
      * clear the AOF error in case of success to make the DB writable again,
@@ -1507,6 +1509,7 @@ void initServerConfig(void) {
 #endif
 #ifdef USE_PB
     server.verbosity_pb_only = CONFIG_DEFAULT_VERBOSITY_PB_ONLY;
+    server.aof_flush_timer = CONFIG_MIN_AOF_FLUSH_TIMER;
 #endif
     server.supervised = 0;
     server.supervised_mode = SUPERVISED_NONE;

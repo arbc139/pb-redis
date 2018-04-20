@@ -406,6 +406,15 @@ void loadServerConfigFromString(char *config) {
             }
             server.pm_file_size = size;
 #endif
+#ifdef USE_PB
+        } else if (!strcasecmp(argv[0], "aof-flush-timer") && (argc == 2)) {
+            long long aof_flush_timer = atoi(argv[1]);
+            if (aof_flush_timer < CONFIG_MIN_AOF_FLUSH_TIMER) {
+                err = "Invalid aof flush timer";
+                goto loaderr;
+            }
+            server.aof_flush_timer = aof_flush_timer;
+#endif
         } else if (!strcasecmp(argv[0],"appendonly") && argc == 2) {
             int yes;
 
