@@ -1,0 +1,6 @@
+{
+  "files.associations": {
+    "libpmemobj.h": "c",
+    "server.h": "c"
+  }
+}

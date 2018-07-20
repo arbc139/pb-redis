@@ -1,0 +1,25 @@
+{
+    "configurations": [
+        {
+            "name": "Linux",
+            "includePath": [
+              "${workspaceFolder}/src",
+              "${workspaceFolder}/deps/geohash-int",
+              "${workspaceFolder}/deps/jemalloc/include/jemalloc",
+              "${workspaceFolder}/deps/linenoise",
+              "${workspaceFolder}/deps/lua/src",
+              "${workspaceFolder}/deps/pmdk/src/include",
+              "${workspaceFolder}/deps/pmdk/src/**"
+            ],
+            "defines": [
+              "USE_PB",
+              "USE_PMDK"
+            ],
+            "cStandard": "c11",
+            "cppStandard": "c++14",
+            "intelliSenseMode": "clang-x64",
+            "compilerPath": "/usr/bin/clang"
+        }
+    ],
+    "version": 4
+}

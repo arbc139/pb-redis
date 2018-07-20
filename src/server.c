@@ -4197,13 +4197,20 @@ int main(int argc, char **argv) {
 #ifdef USE_PMDK
         if (server.pm_reconstruct_required) {
             long long start = ustime();
-            if (pmemReconstructPB() == C_OK) {
-                serverLog(LL_NOTICE,"DB loaded from PMEM: %.3f seconds",(float)(ustime()-start)/1000000);
-            } else if (errno != ENOENT) {
-                serverLog(LL_WARNING,"Fatal error loading the DB from PMEM: %s. Exiting.",strerror(errno));
+#ifdef USE_PB
+            TX_BEGIN(server.pm_pool) {
+                if (pmemReconstructPB() == C_OK) {
+                    serverLog(LL_NOTICE,"DB loaded from PMEM: %.3f seconds",(float)(ustime()-start)/1000000);
+                } else if (errno != ENOENT) {
+                    serverLog(LL_WARNING,"Fatal error loading the DB from PMEM: %s. Exiting.",strerror(errno));
+                    exit(1);
+                }
+            } TX_ONABORT {
+                serverLog(LL_WARNING,"Fatal error loading the DB from PMEM. Exiting.");
                 exit(1);
-            }
-	}
+            } TX_END
+	    }
+#endif
 #endif
         if (server.cluster_enabled) {
             if (verifyClusterConfigWithData() == C_ERR) {
