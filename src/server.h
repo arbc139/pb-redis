@@ -200,8 +200,6 @@ typedef long long mstime_t; /* millisecond time type. */
 
 #ifdef USE_PB
 #define CONFIG_MIN_AOF_FLUSH_TIMER 0
-#define CONFIG_MIN_PM_READ_LATENCY 1000
-#define CONFIG_MIN_PM_WRITE_LATENCY 1000
 #endif
 
 #define ACTIVE_EXPIRE_CYCLE_LOOKUPS_PER_LOOP 20 /* Loopkups per loop. */

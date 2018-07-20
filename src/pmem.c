@@ -42,20 +42,20 @@ int pmemReconstructPB(void) {
 }
 
 PMEMoid getCurrentHead() {
-    struct redis_pmem_root *root = pmemobj_direct(server.pm_rootoid.oid);
+    struct redis_pmem_root *root = pmemobj_direct_latency(server.pm_rootoid.oid);
     if (root->current_head == 0) return root->first_head.oid;
     return root->second_head.oid;
 }
 
 PMEMoid getAnotherHead() {
-    struct redis_pmem_root *root = pmemobj_direct(server.pm_rootoid.oid);
+    struct redis_pmem_root *root = pmemobj_direct_latency(server.pm_rootoid.oid);
     if (root->current_head == 0) return root->second_head.oid;
     return root->first_head.oid;
 }
 
 void setCurrentHead(PMEMoid new_head_oid) {
-    struct redis_pmem_root *root = pmemobj_direct(server.pm_rootoid.oid);
-    TX_ADD_DIRECT(root);
+    struct redis_pmem_root *root = pmemobj_direct_latency(server.pm_rootoid.oid);
+    TX_ADD_DIRECT_LATENCY(root);
     if (root->current_head == 0) {
         root->first_head.oid = new_head_oid;
     } else {
@@ -64,8 +64,8 @@ void setCurrentHead(PMEMoid new_head_oid) {
 }
 
 void setAnotherHead(PMEMoid new_head_oid) {
-    struct redis_pmem_root *root = pmemobj_direct(server.pm_rootoid.oid);
-    TX_ADD_DIRECT(root);
+    struct redis_pmem_root *root = pmemobj_direct_latency(server.pm_rootoid.oid);
+    TX_ADD_DIRECT_LATENCY(root);
     if (root->current_head == 0) {
         root->second_head.oid = new_head_oid;
     } else {
@@ -108,13 +108,13 @@ PMEMoid pmemAddToPBList(void *cmd) {
 }
 
 void pmemSwitchDoubleBuffer() {
-    struct redis_pmem_root *root = pmemobj_direct(server.pm_rootoid.oid);
-    TX_ADD_DIRECT(root);
+    struct redis_pmem_root *root = pmemobj_direct_latency(server.pm_rootoid.oid);
+    TX_ADD_DIRECT_LATENCY(root);
     root->current_head = !root->current_head;
 }
 
 void pmemClearPBList(PMEMoid head) {
-    struct redis_pmem_root *root = pmemobj_direct(server.pm_rootoid.oid);
+    struct redis_pmem_root *root = pmemobj_direct_latency(server.pm_rootoid.oid);
     TOID(struct persistent_aof_log) log_toid;
     int freed = 0;
     log_toid.oid = head;
@@ -123,13 +123,13 @@ void pmemClearPBList(PMEMoid head) {
     while (1) {
         if (TOID_IS_NULL(log_toid))
             break;
-        TOID(struct persistent_aof_log) next_toid = D_RO(log_toid)->next;
+        TOID(struct persistent_aof_log) next_toid = D_RO_LATENCY(log_toid)->next;
         struct persistent_aof_log *log_obj = (persistent_aof_log *)(
                 log_toid.oid.off + (uint64_t) pmem_base_addr
         );
         sds cmd = (sds)(log_obj->cmd_oid.off + (uint64_t) pmem_base_addr);
         sdsfreePM(cmd);
-        TX_FREE(log_toid);
+        TX_FREE_LATENCY(log_toid);
         log_toid = next_toid;
         freed++;
     }
@@ -138,7 +138,7 @@ void pmemClearPBList(PMEMoid head) {
     } else {
         setAnotherHead(OID_NULL);
     }
-    TX_ADD_DIRECT(root);
+    TX_ADD_DIRECT_LATENCY(root);
     root->num_logs -= freed;
 }
 

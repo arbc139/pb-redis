@@ -11,7 +11,7 @@ void emulateReadLatency(void) {
     struct timespec base = nstimespec();
     base.tv_nsec += server.pm_read_latency;
     while (nstimeCompare(base, nstimespec()) == 1) {
-        serverLog(LL_PB, "read latency loop");
+        // serverLog(LL_PB, "read latency loop");
         true;
     }
 }
@@ -20,7 +20,7 @@ void emulateWriteLatency(void) {
     struct timespec base = nstimespec();
     base.tv_nsec += server.pm_write_latency;
     while (nstimeCompare(base, nstimespec()) == 1) {
-        serverLog(LL_PB, "write latency loop");
+        // serverLog(LL_PB, "write latency loop");
         true;
     }
 }
