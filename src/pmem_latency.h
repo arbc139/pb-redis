@@ -27,29 +27,40 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef __PMEM_H
-#define __PMEM_H
+#ifndef __PMEM_LATENCY_H
+#define __PMEM_LATENCY_H
 
 #include "obj.h"
 #include "libpmemobj.h"
 
 #ifdef USE_PB
+void emulateReadLatency(void);
+void emulateWriteLatency(void);
 
-// Alias: PB
-typedef struct persistent_aof_log {
-    PMEMoid cmd_oid;
-    TOID(struct persistent_aof_log) next;
-    TOID(struct persistent_aof_log) prev;
-} persistent_aof_log;
+void *pmemobj_direct_latency(PMEMoid oid);
+PMEMoid pmemobj_tx_zalloc_latency(size_t size, uint64_t type_num);
+int pmemobj_tx_free_latency(PMEMoid oid);
 
-int pmemReconstructPB(void);
-PMEMoid getCurrentHead();
-PMEMoid getAnotherHead();
-void setCurrentHead(PMEMoid new_head_oid);
-void setAnotherHead(PMEMoid new_head_oid);
-PMEMoid pmemAddToPBList(void *cmd);
-void pmemSwitchDoubleBuffer();
-void pmemClearPBList(PMEMoid head);
+#define D_RW_LATENCY(o) ({\
+    emulateReadLatency();\
+    D_RW(o);\
+})
+#define D_RO_LATENCY(o) ({\
+    emulateReadLatency();\
+    D_RO(o);\
+})
+#define TX_ADD_DIRECT_LATENCY(o) ({\
+    emulateWriteLatency();\
+    TX_ADD_DIRECT(o);\
+})
+#define TX_FREE_LATENCY(o) ({\
+    emulateWriteLatency();\
+    TX_FREE(o);\
+})
+#define TX_ADD_FIELD_DIRECT_LATENCY(o, field) ({\
+    emulateWriteLatency();\
+    TX_ADD_FIELD_DIRECT(o, field);\
+})
 #endif
 
 #endif

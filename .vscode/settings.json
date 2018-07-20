@@ -2,6 +2,7 @@
   "files.associations": {
     "libpmemobj.h": "c",
     "server.h": "c",
-    "chrono": "c"
+    "chrono": "c",
+    "util.h": "c"
   }
 }

@@ -28,4 +28,3 @@ deps/lua/src/liblua.a
 .prerequisites
 *.dSYM
 *.aof
-.vscode/
