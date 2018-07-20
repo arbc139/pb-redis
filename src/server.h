@@ -200,6 +200,8 @@ typedef long long mstime_t; /* millisecond time type. */
 
 #ifdef USE_PB
 #define CONFIG_MIN_AOF_FLUSH_TIMER 0
+#define CONFIG_MIN_PM_READ_LATENCY 1000
+#define CONFIG_MIN_PM_WRITE_LATENCY 1000
 #endif
 
 #define ACTIVE_EXPIRE_CYCLE_LOOKUPS_PER_LOOP 20 /* Loopkups per loop. */
@@ -880,6 +882,8 @@ struct redisServer {
 #ifdef USE_PB
     int verbosity_pb_only;          /* Force to write LL_PB log only. */
     size_t aof_flush_timer;         /* AOF log flush timer */
+    size_t pm_read_latency;         /* Read latency */
+    size_t pm_write_latency;        /* Write latency */
 #endif
     /* AOF persistence */
     int aof_state;                  /* AOF_(ON|OFF|WAIT_REWRITE) */

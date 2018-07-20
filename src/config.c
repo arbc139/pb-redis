@@ -415,6 +415,24 @@ void loadServerConfigFromString(char *config) {
             }
             server.aof_flush_timer = aof_flush_timer;
 #endif
+#ifdef USE_PB
+        } else if (!strcasecmp(argv[0], "pm-read-latency") && (argc == 2)) {
+            long long pm_read_latency = atoi(argv[1]);
+            if (pm_read_latency < CONFIG_MIN_PM_READ_LATENCY) {
+                err = "Invalid pm read latency";
+                goto loaderr;
+            }
+            server.pm_read_latency = pm_read_latency;
+#endif
+#ifdef USE_PB
+        } else if (!strcasecmp(argv[0], "pm-write-latency") && (argc == 2)) {
+            long long pm_write_latency = atoi(argv[1]);
+            if (pm_write_latency < CONFIG_MIN_PM_WRITE_LATENCY) {
+                err = "Invalid pm write latency";
+                goto loaderr;
+            }
+            server.pm_write_latency = pm_write_latency;
+#endif
         } else if (!strcasecmp(argv[0],"appendonly") && argc == 2) {
             int yes;
 
