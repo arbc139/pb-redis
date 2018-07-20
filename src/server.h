@@ -1171,6 +1171,8 @@ extern dictType replScriptCacheDictType;
  *----------------------------------------------------------------------------*/
 
 /* Utils */
+struct timespec nstimespec(void);
+int nstimeCompare(const struct timespec a, const struct timespec b);
 long long ustime(void);
 long long mstime(void);
 void getRandomHexChars(char *p, unsigned int len);

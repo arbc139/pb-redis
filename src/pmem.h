@@ -30,13 +30,42 @@
 #ifndef __PMEM_H
 #define __PMEM_H
 
+#include "obj.h"
+#include "libpmemobj.h"
+
 #ifdef USE_PB
+
+#define D_RW_LATENCY(latencyFunction, o) ({\
+    (latencyFunction)();\
+    D_RW(o);\
+})
+#define D_RO_LATENCY(latencyFunction, o) ({\
+    (latencyFunction)();\
+    D_RO(o);\
+})
+#define TX_ADD_DIRECT_LATENCY(latencyFunction, o) ({\
+    (latencyFunction)();\
+    TX_ADD_DIRECT(o);\
+})
+#define TX_FREE_LATENCY(latencyFunction, o) ({\
+    (latencyFunction)();\
+    TX_FREE(o);\
+})
+#define TX_ADD_FIELD_DIRECT_LATENCY(latencyFunction, o, field) ({\
+    (latencyFunction)();\
+    TX_ADD_FIELD_DIRECT(o, field);\
+})
+
 // Alias: PB
 typedef struct persistent_aof_log {
     PMEMoid cmd_oid;
     TOID(struct persistent_aof_log) next;
     TOID(struct persistent_aof_log) prev;
 } persistent_aof_log;
+
+void *pmemobj_direct_latency(PMEMoid oid);
+PMEMoid pmemobj_tx_zalloc_latency(size_t size, uint64_t type_num);
+int pmemobj_tx_free_latency(PMEMoid oid);
 
 int pmemReconstructPB(void);
 PMEMoid getCurrentHead();

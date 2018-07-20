@@ -33,6 +33,41 @@
 #include "libpmemobj.h"
 #include "util.h"
 
+#include <time.h>
+
+static inline void emulateReadLatency(void) {
+    struct timespec base = nstimespec();
+    base.tv_nsec += server.pm_read_latency;
+    while (nstimeCompare(base, nstimespec()) == 1) {
+        serverLog(LL_PB, "read latency loop");
+        true;
+    }
+}
+
+static inline void emulateWriteLatency(void) {
+    struct timespec base = nstimespec();
+    base.tv_nsec += server.pm_write_latency;
+    while (nstimeCompare(base, nstimespec()) == 1) {
+        serverLog(LL_PB, "write latency loop");
+        true;
+    }
+}
+
+void *pmemobj_direct_latency(PMEMoid oid) {
+    emulateReadLatency();
+    return pmemobj_direct(oid);
+}
+
+PMEMoid pmemobj_tx_zalloc_latency(size_t size, uint64_t type_num) {
+    emulateWriteLatency();
+    return pmemobj_tx_zalloc(size, type_num);
+}
+
+int pmemobj_tx_free_latency(PMEMoid oid) {
+    emulateWriteLatency();
+    return pmemobj_tx_free(oid);
+}
+
 int pmemReconstructPB(void) {
     loadAppendOnlyPersistentBuffer();
     pmemClearPBList(getCurrentHead());
@@ -82,25 +117,25 @@ PMEMoid pmemAddToPBList(void *cmd) {
     cmd_oid.pool_uuid_lo = server.pool_uuid_lo;
     cmd_oid.off = (uint64_t)cmd - (uint64_t)server.pm_pool->addr;
 
-    paof_log_oid = pmemobj_tx_zalloc(sizeof(struct persistent_aof_log), pm_type_persistent_aof_log);
-    paof_log_ptr = (struct persistent_aof_log *) pmemobj_direct(paof_log_oid);
+    paof_log_oid = pmemobj_tx_zalloc_latency(sizeof(struct persistent_aof_log), pm_type_persistent_aof_log);
+    paof_log_ptr = (struct persistent_aof_log *) pmemobj_direct_latency(paof_log_oid);
     paof_log_ptr->cmd_oid = cmd_oid;
     paof_log_toid.oid = paof_log_oid;
 
-    root = pmemobj_direct(server.pm_rootoid.oid);
+    root = pmemobj_direct_latency(server.pm_rootoid.oid);
 
     TOID(struct persistent_aof_log) head;
     head.oid = getCurrentHead();
 
     paof_log_ptr->next = head;
     if(!TOID_IS_NULL(head)) {
-        struct persistent_aof_log *head_ptr = D_RW(head);
-        TX_ADD_FIELD_DIRECT(head_ptr, prev);
+        struct persistent_aof_log *head_ptr = D_RW_LATENCY(emulateReadLatency, head);
+        TX_ADD_FIELD_DIRECT_LATENCY(emulateWriteLatency, head_ptr, prev);
     	head_ptr->prev = paof_log_toid;
     }
 
     setCurrentHead(paof_log_toid.oid);
-    TX_ADD_DIRECT(root);
+    TX_ADD_DIRECT_LATENCY(emulateWriteLatency, root);
     root->num_logs++;
 
     return paof_log_oid;
