@@ -35,7 +35,7 @@
 
 #include <time.h>
 
-static inline void emulateReadLatency(void) {
+void emulateReadLatency(void) {
     struct timespec base = nstimespec();
     base.tv_nsec += server.pm_read_latency;
     while (nstimeCompare(base, nstimespec()) == 1) {
@@ -44,7 +44,7 @@ static inline void emulateReadLatency(void) {
     }
 }
 
-static inline void emulateWriteLatency(void) {
+void emulateWriteLatency(void) {
     struct timespec base = nstimespec();
     base.tv_nsec += server.pm_write_latency;
     while (nstimeCompare(base, nstimespec()) == 1) {
@@ -129,13 +129,13 @@ PMEMoid pmemAddToPBList(void *cmd) {
 
     paof_log_ptr->next = head;
     if(!TOID_IS_NULL(head)) {
-        struct persistent_aof_log *head_ptr = D_RW_LATENCY(emulateReadLatency, head);
-        TX_ADD_FIELD_DIRECT_LATENCY(emulateWriteLatency, head_ptr, prev);
+        struct persistent_aof_log *head_ptr = D_RW_LATENCY(head);
+        TX_ADD_FIELD_DIRECT_LATENCY(head_ptr, prev);
     	head_ptr->prev = paof_log_toid;
     }
 
     setCurrentHead(paof_log_toid.oid);
-    TX_ADD_DIRECT_LATENCY(emulateWriteLatency, root);
+    TX_ADD_DIRECT_LATENCY(root);
     root->num_logs++;
 
     return paof_log_oid;

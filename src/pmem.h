@@ -35,24 +35,31 @@
 
 #ifdef USE_PB
 
-#define D_RW_LATENCY(latencyFunction, o) ({\
-    (latencyFunction)();\
+void emulateReadLatency(void);
+void emulateWriteLatency(void);
+
+void *pmemobj_direct_latency(PMEMoid oid);
+PMEMoid pmemobj_tx_zalloc_latency(size_t size, uint64_t type_num);
+int pmemobj_tx_free_latency(PMEMoid oid);
+
+#define D_RW_LATENCY(o) ({\
+    emulateReadLatency();\
     D_RW(o);\
 })
-#define D_RO_LATENCY(latencyFunction, o) ({\
-    (latencyFunction)();\
+#define D_RO_LATENCY(o) ({\
+    emulateReadLatency();\
     D_RO(o);\
 })
-#define TX_ADD_DIRECT_LATENCY(latencyFunction, o) ({\
-    (latencyFunction)();\
+#define TX_ADD_DIRECT_LATENCY(o) ({\
+    emulateWriteLatency();\
     TX_ADD_DIRECT(o);\
 })
-#define TX_FREE_LATENCY(latencyFunction, o) ({\
-    (latencyFunction)();\
+#define TX_FREE_LATENCY(o) ({\
+    emulateWriteLatency();\
     TX_FREE(o);\
 })
-#define TX_ADD_FIELD_DIRECT_LATENCY(latencyFunction, o, field) ({\
-    (latencyFunction)();\
+#define TX_ADD_FIELD_DIRECT_LATENCY(o, field) ({\
+    emulateWriteLatency();\
     TX_ADD_FIELD_DIRECT(o, field);\
 })
 
@@ -62,10 +69,6 @@ typedef struct persistent_aof_log {
     TOID(struct persistent_aof_log) next;
     TOID(struct persistent_aof_log) prev;
 } persistent_aof_log;
-
-void *pmemobj_direct_latency(PMEMoid oid);
-PMEMoid pmemobj_tx_zalloc_latency(size_t size, uint64_t type_num);
-int pmemobj_tx_free_latency(PMEMoid oid);
 
 int pmemReconstructPB(void);
 PMEMoid getCurrentHead();
