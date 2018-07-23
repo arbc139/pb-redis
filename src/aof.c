@@ -779,12 +779,139 @@ fmterr: /* Format error. */
 }
 
 #ifdef USE_PB
+#define PB_LOG_BUFFER_DELIMITER "\n"
+#define PB_RECONSTRUCT_CODE_OK 0
+#define PB_RECONSTRUCT_CODE_FMTERR 1
+#define PB_RECONSTRUCT_CODE_READERR 1
+int parsePersistentBufferLine(struct client *fakeClient, const char *log_str) {
+    int argc, j;
+    unsigned long len;
+    robj **argv;
+    sds argsds;
+    char buf[strlen(log_str) + 1];
+    struct redisCommand *cmd;
+
+    char *token;
+    char *save_ptr;
+
+    memcpy(buf, log_str, strlen(log_str));
+    token = strtok_r(buf, PB_LOG_BUFFER_DELIMITER, &save_ptr);
+
+    while (token != NULL) {
+        if (token[0] != '*') return PB_RECONSTRUCT_CODE_FMTERR;
+        if (token[1] == '\0') return PB_RECONSTRUCT_CODE_READERR;
+        argc = atoi(token + 1);
+        if (argc < 1) return PB_RECONSTRUCT_CODE_FMTERR;
+
+        argv = zmalloc(sizeof(robj*)*argc);
+        fakeClient->argc = argc;
+        fakeClient->argv = argv;
+
+        for (j = 0; j < argc; j++) {
+            if ((token = strtok_r(NULL, PB_LOG_BUFFER_DELIMITER, &save_ptr)) == NULL) {
+                fakeClient->argc = j; /* Free up to j-1. */
+                freeFakeClientArgv(fakeClient);
+                return PB_RECONSTRUCT_CODE_READERR;
+            }
+            if (token[0] != '$') return PB_RECONSTRUCT_CODE_FMTERR;
+            len = strtol(token + 1, NULL, 10);
+            if (len && (token = strtok_r(NULL, PB_LOG_BUFFER_DELIMITER, &save_ptr)) == NULL) {
+                fakeClient->argc = j; /* Free up to j-1. */
+                freeFakeClientArgv(fakeClient);
+                return PB_RECONSTRUCT_CODE_FMTERR;
+            }
+            argsds = sdsnewlen(token, len);
+            argv[j] = createObject(OBJ_STRING, argsds);
+        }
+
+        /* Command lookup */
+        cmd = lookupCommand(argv[0]->ptr);
+        if (!cmd) {
+            serverLog(LL_WARNING,"Unknown command '%s' reading the append only file", (char*)argv[0]->ptr);
+            exit(1);
+        }
+
+        /* Run the command in the context of a fake client */
+        cmd->proc(fakeClient);
+
+        /* The fake client should not have a reply */
+        serverAssert(fakeClient->bufpos == 0 && listLength(fakeClient->reply) == 0);
+        /* The fake client should never get blocked */
+        serverAssert((fakeClient->flags & CLIENT_BLOCKED) == 0);
+
+        /* Write unfinished append only file log */
+        feedAppendOnlyFile(cmd, fakeClient->db->id, argv, argc);
+
+        /* Clean up. Command code may have changed argv/argc so we use the
+            * argv/argc of the client instead of the local variables. */
+        freeFakeClientArgv(fakeClient);
+
+        /* There is a case that multiple logs in same persistent buffer node. */
+        token = strtok_r(NULL, PB_LOG_BUFFER_DELIMITER, &save_ptr);
+    }
+    return PB_RECONSTRUCT_CODE_OK;
+}
+
 /* Reply the append log persistent buffer. */
 /* Replay the append log file. On success C_OK is returned. On non fatal
  * error (the append only file is zero-length) C_ERR is returned. On
  * fatal error an error message is logged and the program exists. */
 int loadAppendOnlyPersistentBuffer() {
-    // Need to implement.
+    struct client *fakeClient;
+    void *pmem_base_addr = (void *) server.pm_pool->addr;
+    TOID(struct persistent_aof_log) head;
+    int old_aof_state = server.aof_state;
+    head.oid = getCurrentHead();
+
+    if (TOID_IS_NULL(head)) {
+        serverLog(LL_PB, "[PB] Nothing to reconstruct.");
+        return C_OK;
+    }
+
+    /* Temporarily disable AOF, to prevent EXEC from feeding a MULTI
+     * to the same file we're about to read. */
+    // server.aof_state = AOF_OFF;
+
+    fakeClient = createFakeClient();
+    while(!TOID_IS_NULL(head)) {
+        struct persistent_aof_log *log_obj = (persistent_aof_log *)(
+            head.oid.off + (uint64_t) pmem_base_addr
+        );
+        void *log_str = (void *)(log_obj->cmd_oid.off + (uint64_t) pmem_base_addr);
+
+        if (log_str == NULL) {
+            goto pbreaderr;
+        }
+
+        parsePersistentBufferLine(fakeClient, log_str);
+        // TODO(totorody): Handle a error code from parsing works.
+        /*
+        if (errcode == PB_RECONSTRUCT_CODE_FMTERR) {
+            goto pbfmterr;
+        } else if (errcode == PB_RECONSTRUCT_CODE_READERR) {
+            goto pbreaderr;
+        }
+        */
+
+        head = D_RO(head)->next;
+    }
+
+    /* DB loaded, cleanup and return C_OK to the caller. */
+    freeFakeClient(fakeClient);
+    server.aof_state = old_aof_state;
+    return C_OK;
+
+pbreaderr: /* Read error. If feof(fp) is true, fall through to unexpected EOF. */
+    if (fakeClient) freeFakeClient(fakeClient); /* avoid valgrind warning */
+    serverLog(LL_PB, "Unrecoverable error reading the append only file: %s", strerror(errno));
+    server.aof_state = old_aof_state;
+    return C_OK;
+
+pbfmterr: /* Format error. */
+    if (fakeClient) freeFakeClient(fakeClient); /* avoid valgrind warning */
+    serverLog(LL_PB, "Bad file format reading the append only file: make a backup of your AOF file, then use ./redis-check-aof --fix <filename>");
+    server.aof_state = old_aof_state;
+    return C_OK;
 }
 #endif
 
