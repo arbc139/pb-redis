@@ -860,7 +860,6 @@ int loadAppendOnlyPersistentBuffer() {
     struct client *fakeClient;
     void *pmem_base_addr = (void *) server.pm_pool->addr;
     TOID(struct persistent_aof_log) head;
-    int old_aof_state = server.aof_state;
     head.oid = getCurrentHead();
 
     if (TOID_IS_NULL(head)) {
@@ -868,9 +867,7 @@ int loadAppendOnlyPersistentBuffer() {
         return C_OK;
     }
 
-    /* Temporarily disable AOF, to prevent EXEC from feeding a MULTI
-     * to the same file we're about to read. */
-    // server.aof_state = AOF_OFF;
+    serverLog(LL_PB, "[PB] Starts to reconstruct persistent buffer.");
 
     fakeClient = createFakeClient();
     while(!TOID_IS_NULL(head)) {
@@ -898,19 +895,17 @@ int loadAppendOnlyPersistentBuffer() {
 
     /* DB loaded, cleanup and return C_OK to the caller. */
     freeFakeClient(fakeClient);
-    server.aof_state = old_aof_state;
+    serverLog(LL_PB, "[PB] Ends reconstruction persistent buffer successfully.");
     return C_OK;
 
 pbreaderr: /* Read error. If feof(fp) is true, fall through to unexpected EOF. */
     if (fakeClient) freeFakeClient(fakeClient); /* avoid valgrind warning */
-    serverLog(LL_PB, "Unrecoverable error reading the append only file: %s", strerror(errno));
-    server.aof_state = old_aof_state;
+    serverLog(LL_PB, "Unrecoverable error reading the append only file.");
     return C_OK;
 
 pbfmterr: /* Format error. */
     if (fakeClient) freeFakeClient(fakeClient); /* avoid valgrind warning */
     serverLog(LL_PB, "Bad file format reading the append only file: make a backup of your AOF file, then use ./redis-check-aof --fix <filename>");
-    server.aof_state = old_aof_state;
     return C_OK;
 }
 #endif
