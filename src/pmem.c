@@ -110,7 +110,11 @@ PMEMoid pmemAddToPBList(void *cmd) {
 void pmemSwitchDoubleBuffer() {
     struct redis_pmem_root *root = pmemobj_direct_latency(server.pm_rootoid.oid);
     TX_ADD_DIRECT_LATENCY(root);
-    root->current_head = !root->current_head;
+    if (root->current_head == 0) {
+        root->current_head = 1;
+    } else {
+        root->current_head = 0;
+    }
 }
 
 void pmemClearPBList(PMEMoid head) {
@@ -120,15 +124,22 @@ void pmemClearPBList(PMEMoid head) {
     log_toid.oid = head;
 
     void *pmem_base_addr = (void *)server.pm_pool->addr;
-    while (1) {
-        if (TOID_IS_NULL(log_toid))
-            break;
+    while (!TOID_IS_NULL(log_toid)) {
         TOID(struct persistent_aof_log) next_toid = D_RO_LATENCY(log_toid)->next;
         struct persistent_aof_log *log_obj = (persistent_aof_log *)(
                 log_toid.oid.off + (uint64_t) pmem_base_addr
         );
+        if (log_obj == NULL) {
+            TX_FREE_LATENCY(log_toid);
+            log_toid = next_toid;
+            continue;
+        }
         sds cmd = (sds)(log_obj->cmd_oid.off + (uint64_t) pmem_base_addr);
-        sdsfreePM(cmd);
+        if (cmd == NULL) {
+            TX_FREE_LATENCY(log_toid);
+            log_toid = next_toid;
+            continue;
+        }
         TX_FREE_LATENCY(log_toid);
         log_toid = next_toid;
         freed++;
