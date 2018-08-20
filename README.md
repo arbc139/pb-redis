@@ -2,10 +2,10 @@
 Persistent Log Buffer Implementation Redis (PB-Redis) \
 Implemented by totorody.
 
-## To build ND-Hedis with PMDK run command
-    % make USE_PMDK=yes TODIS=yes STD=-std=gnu99
+## To build PB-Redis with PMDK run command
+    % make USE_PMDK=yes USE_PB=yes STD=-std=gnu99
 
-## Run ND-Hedis server (root)
+## Run PB-Redis server (root)
     % PMEM_IS_PMEM_FORCE=1 ./src/redis-server ${some-configuration-file}
 
 -------------
