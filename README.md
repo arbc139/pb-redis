@@ -1,4 +1,6 @@
-Persistent Log Buffer Implementation Redis (PB-Redis)
+# PB-Redis
+Persistent Log Buffer Implementation Redis (PB-Redis) \
+Implemented by totorody
 
 -------------
 This README is just a fast *quick start* document. You can find more detailed documentation at http://redis.io.
