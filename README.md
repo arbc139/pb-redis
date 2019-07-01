@@ -7,6 +7,17 @@ Implemented by totorody.
 
 ## Run PB-Redis server (root)
     % PMEM_IS_PMEM_FORCE=1 ./src/redis-server ${some-configuration-file}
+    
+## Publication
+김도영, 박상현. (2018). **비휘발성 메모리를 이용하여 데이터 영속성을 유지한 인 메모리 키-값 데이터베이스**. 2018 한국정보과학회 학술발표논문집, 140-142.
+
+Best Paper Awards
+
+https://www.dbpia.co.kr/journal/articleDetail?nodeId=NODE07502933
+
+김도영, 최원기, 성한승, 이지환, 박상현. (2018). **인-메모리 키-값 데이터베이스를 위한 비 휘발성 메모리 기반 영속적 로그 버퍼 기법**. 정보과학회논문지, 45(11), 1193-1202.
+
+https://www.dbpia.co.kr/journal/articleDetail?nodeId=NODE07556793
 
 -------------
 This README is just a fast *quick start* document. You can find more detailed documentation at http://redis.io.
