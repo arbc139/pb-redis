@@ -9,9 +9,7 @@ Implemented by totorody.
     % PMEM_IS_PMEM_FORCE=1 ./src/redis-server ${some-configuration-file}
     
 ## Publication
-김도영, 박상현. (2018). **비휘발성 메모리를 이용하여 데이터 영속성을 유지한 인 메모리 키-값 데이터베이스**. 2018 한국정보과학회 학술발표논문집, 140-142.
-
-Best Paper Awards
+김도영, 박상현. (2018). **비휘발성 메모리를 이용하여 데이터 영속성을 유지한 인 메모리 키-값 데이터베이스**. 2018 한국정보과학회 학술발표논문집, 140-142. (Best Paper Awards)
 
 https://www.dbpia.co.kr/journal/articleDetail?nodeId=NODE07502933
 
